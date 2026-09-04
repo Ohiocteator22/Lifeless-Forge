@@ -13,7 +13,7 @@ def launch_gui():
     root.title("Lifeless-Forge – Compression Tool")
     root.geometry("700x650")
     root.resizable(False, False)
-
+    root.iconbitmap("app_icon.ico") 
     nb = ttk.Notebook(root)
     nb.pack(fill="both", expand=True, padx=5, pady=5)
 
