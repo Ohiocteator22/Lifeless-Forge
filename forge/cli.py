@@ -1,4 +1,5 @@
 # forge/cli.py
+from .utils import format_size, parse_size_string, get_progress_printer
 import argparse
 import sys
 import json
