@@ -1,4 +1,4 @@
-
+# forge/__init__.py
 """
 Lifeless-Forge – A ZIP compression tool with high-ratio compression,
 password protection, batch generation, and Office formats.
