@@ -31,5 +31,5 @@ Perfect for:
 ### From Source
 
 ```bash
-git clone https://github.com/yourusername/Lifeless-Forge.git
+git clone https://github.com/Ohiocteator22/Lifeless-Forge.git
 cd Lifeless-Forge
