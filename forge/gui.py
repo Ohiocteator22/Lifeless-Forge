@@ -7,13 +7,25 @@ from tkinter import ttk, filedialog, messagebox, simpledialog
 import os
 from .core import generate_zip, generate_batch, extract_zip
 from .utils import format_size, parse_size_string
+import sys
+import os
+
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller."""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        # Running as a normal Python script
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 def launch_gui():
     root = tk.Tk()
     root.title("Lifeless-Forge – Compression Tool")
     root.geometry("700x650")
     root.resizable(False, False)
-    root.iconbitmap("app_icon.ico") 
+    root.iconbitmap(resource_path("app_icon.ico"))
     nb = ttk.Notebook(root)
     nb.pack(fill="both", expand=True, padx=5, pady=5)
 
