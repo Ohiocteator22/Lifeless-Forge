@@ -1,4 +1,5 @@
 # forge/core.py
+import lzma
 import zipfile
 import os
 import tempfile
