@@ -17,6 +17,7 @@ def cli_generate(args):
         progress_callback=progress,
         legacy_crypto=args.legacy,
         fmt=args.format,
+        algo=args.algo,
     )
     print_stats(stats)
     if args.password and args.legacy:
@@ -48,6 +49,7 @@ def cli_batch(args):
                 "password": args.password,
                 "legacy": args.legacy,
                 "format": fmt,
+                "algo": args.algo,
             })
     if not tasks:
         print("No tasks defined. Use --series or --batch-config.")
@@ -86,6 +88,8 @@ def setup_cli_parser():
     gen.add_argument("--password", help="Password for encryption")
     gen.add_argument("--legacy", action="store_true", help="Use legacy ZipCrypto")
     gen.add_argument("--no-progress", action="store_true", help="Disable progress bar")
+    gen.add_argument("--algo", choices=["deflate", "lzma"], default="deflate",
+                 help="Compression algorithm: deflate (ZIP) or lzma (XZ)")
     gen.set_defaults(func=cli_generate)
 
     batch = subparsers.add_parser("batch", help="Generate multiple archives")
@@ -97,6 +101,8 @@ def setup_cli_parser():
     batch.add_argument("--store", action="store_true", help="No compression (for --series)")
     batch.add_argument("--password", help="Password (for --series)")
     batch.add_argument("--legacy", action="store_true", help="Legacy encryption (for --series)")
+    batch.add_argument("--algo", choices=["deflate", "lzma"], default="deflate",
+                   help="Algorithm for all tasks (when using --series)")
     batch.set_defaults(func=cli_batch)
 
     ext = subparsers.add_parser("extract", help="Extract a password-protected archive")
