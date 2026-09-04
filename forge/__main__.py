@@ -8,6 +8,7 @@ def main():
     if len(sys.argv) == 1:
         launch_gui()
         return
+
     # If --gui present, launch GUI (even with other args)
     if "--gui" in sys.argv:
         launch_gui()
@@ -15,6 +16,7 @@ def main():
 
     parser = setup_cli_parser()
     args = parser.parse_args()
+
     if hasattr(args, "func"):
         args.func(args)
     else:
