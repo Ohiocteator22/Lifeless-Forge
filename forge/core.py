@@ -9,19 +9,59 @@ from .utils import format_size, parse_size_string, get_progress_printer
 from .templates import create_pptx_template, create_docx_template, create_xlsx_template
 
 def generate_zip(output, extracted_mb, pattern="A", compression=True, password=None,
-                 progress_callback=None, legacy_crypto=False, fmt="zip"):
+                 progress_callback=None, legacy_crypto=False, fmt="zip", algo="deflate"):
     target_bytes = extracted_mb * 1024 * 1024
     chunk = (pattern * (1024 * 1024)).encode()
 
+    # ---- 1. Create the temporary data file ----
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        temp_name = tmp.name
+        written = 0
+        if progress_callback:
+            progress_callback(0, extracted_mb)
+        while written < target_bytes:
+            remaining = target_bytes - written
+            write_size = min(len(chunk), remaining)
+            tmp.write(chunk[:write_size])
+            written += write_size
+            if progress_callback:
+                progress_callback(written // (1024*1024), extracted_mb)
+
+    # ---- 2. LZMA (XZ) mode ----
+    if algo == "lzma":
+        # Auto‑correct extension to .xz
+        if not output.lower().endswith(('.xz', '.lzma')):
+            output = output.rsplit('.', 1)[0] + '.xz'
+        # Compress with LZMA – preset 9 = maximum compression
+        with lzma.open(output, "w", preset=9) as f:
+            with open(temp_name, "rb") as src:
+                f.write(src.read())
+        os.remove(temp_name)
+        compressed_size = os.path.getsize(output)
+        ratio = target_bytes / compressed_size if compressed_size else 0
+        return {
+            "output": output,
+            "extracted_bytes": target_bytes,
+            "compressed_bytes": compressed_size,
+            "ratio": ratio,
+            "format": "xz",
+            "algo": "lzma",
+        }
+
+    # ---- 3. DEFLATE (ZIP / Office) mode ----
     if fmt in ("pptx", "docx", "xlsx"):
+        # Build the Office template folder
         with tempfile.TemporaryDirectory() as tmpdir:
             if fmt == "pptx":
+                from .templates import create_pptx_template
                 create_pptx_template(tmpdir)
                 dummy_path = "ppt/media/dummy.bin"
             elif fmt == "docx":
+                from .templates import create_docx_template
                 create_docx_template(tmpdir)
                 dummy_path = "word/media/dummy.bin"
             elif fmt == "xlsx":
+                from .templates import create_xlsx_template
                 create_xlsx_template(tmpdir)
                 dummy_path = "xl/media/dummy.bin"
             else:
@@ -29,18 +69,11 @@ def generate_zip(output, extracted_mb, pattern="A", compression=True, password=N
 
             dummy_full = Path(tmpdir) / dummy_path
             dummy_full.parent.mkdir(parents=True, exist_ok=True)
-            with open(dummy_full, "wb") as f:
-                written = 0
-                if progress_callback:
-                    progress_callback(0, extracted_mb)
-                while written < target_bytes:
-                    remaining = target_bytes - written
-                    write_size = min(len(chunk), remaining)
-                    f.write(chunk[:write_size])
-                    written += write_size
-                    if progress_callback:
-                        progress_callback(written // (1024*1024), extracted_mb)
+            # Move our data file into the template
+            import shutil
+            shutil.move(temp_name, dummy_full)
 
+            # Zip the whole folder with optional password & compression
             try:
                 if password:
                     import pyzipper
@@ -62,6 +95,7 @@ def generate_zip(output, extracted_mb, pattern="A", compression=True, password=N
                                 arcname = os.path.relpath(full_path, tmpdir)
                                 z.write(full_path, arcname=arcname)
             except ImportError:
+                # Fallback if pyzipper is missing
                 compress_type = zipfile.ZIP_DEFLATED if compression else zipfile.ZIP_STORED
                 with zipfile.ZipFile(output, "w", compression=compress_type) as z:
                     for root, _, files in os.walk(tmpdir):
@@ -72,19 +106,7 @@ def generate_zip(output, extracted_mb, pattern="A", compression=True, password=N
                 if password:
                     print("Warning: pyzipper not installed, password ignored.")
     else:
-        with tempfile.NamedTemporaryFile(delete=False) as tmp:
-            temp_name = tmp.name
-            written = 0
-            if progress_callback:
-                progress_callback(0, extracted_mb)
-            while written < target_bytes:
-                remaining = target_bytes - written
-                write_size = min(len(chunk), remaining)
-                tmp.write(chunk[:write_size])
-                written += write_size
-                if progress_callback:
-                    progress_callback(written // (1024*1024), extracted_mb)
-
+        # Plain ZIP with a single file
         try:
             if password:
                 import pyzipper
@@ -105,6 +127,7 @@ def generate_zip(output, extracted_mb, pattern="A", compression=True, password=N
                 print("Warning: pyzipper not installed, password ignored.")
         os.remove(temp_name)
 
+    # ---- 4. Gather stats and return ----
     compressed_size = os.path.getsize(output)
     ratio = target_bytes / compressed_size if compressed_size else 0
     return {
@@ -113,6 +136,7 @@ def generate_zip(output, extracted_mb, pattern="A", compression=True, password=N
         "compressed_bytes": compressed_size,
         "ratio": ratio,
         "format": fmt,
+        "algo": "deflate",
     }
 
 def print_stats(stats):
