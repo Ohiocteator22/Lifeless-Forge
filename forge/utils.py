@@ -20,7 +20,6 @@ def parse_size_string(s):
     return int(val * multipliers.get(unit, 1))
 
 def get_progress_printer(enable=False, total=None, label="Writing"):
-    """Return a progress callback function. Uses tqdm if available."""
     if not enable:
         return lambda current, total: None
     try:
