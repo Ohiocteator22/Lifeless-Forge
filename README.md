@@ -33,3 +33,12 @@ Perfect for:
 ```bash
 git clone https://github.com/Ohiocteator22/Lifeless-Forge.git
 cd Lifeless-Forge
+```
+## 📥 Download & Run
+
+### For Windows Users (no Python required!)
+1. Go to the [Releases](https://github.com/yourusername/Lifeless-Forge/releases) page.
+2. Download `Forge.exe`.
+3. Double‑click to launch the GUI, or run it from the command line:
+   ```cmd
+   Forge.exe generate -s 100 -o demo.pptx --format pptx
