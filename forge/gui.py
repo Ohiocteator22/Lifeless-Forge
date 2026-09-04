@@ -55,6 +55,12 @@ def launch_gui():
     format_combo = ttk.Combobox(tab_single, textvariable=format_var, values=["zip", "pptx", "docx", "xlsx"], state="readonly")
     format_combo.grid(row=row, column=1, padx=5, pady=5, sticky="w")
     row+=1
+    # Algorithm
+    ttk.Label(tab_single, text="Algorithm:").grid(row=row, column=0, padx=5, pady=5, sticky="w")
+    algo_combo = ttk.Combobox(tab_single, values=["deflate", "lzma"], state="readonly")
+    algo_combo.set("deflate")
+    algo_combo.grid(row=row, column=1, padx=5, pady=5, sticky="w")
+    row += 1
 
     ttk.Label(tab_single, text="Output:").grid(row=row, column=0, padx=5, pady=5, sticky="w")
     ttk.Entry(tab_single, textvariable=output_var, width=30).grid(row=row, column=1, padx=5, pady=5, sticky="ew")
@@ -102,6 +108,7 @@ def launch_gui():
                 progress_callback=upd,
                 legacy_crypto=legacy_var.get(),
                 fmt=format_var.get(),
+                algo=algo_combo.get(),
             )
             log_single_msg(f"Created: {stats['output']} ({stats['format'].upper()})")
             log_single_msg(f"Compressed: {format_size(stats['compressed_bytes'])}")
@@ -143,11 +150,20 @@ def launch_gui():
     ttk.Label(tab_batch, text="Format:").grid(row=br, column=0, padx=5, pady=5, sticky="w")
     ttk.Combobox(tab_batch, textvariable=batch_format_var, values=["zip", "pptx", "docx", "xlsx"], state="readonly").grid(row=br, column=1, padx=5, pady=5, sticky="w")
     br+=1
-
+    
+    ttk.Label(tab_batch, text="Algorithm:").grid(row=br, column=0, padx=5, pady=5, sticky="w")
+    batch_algo_combo = ttk.Combobox(tab_batch, values=["deflate", "lzma"], state="readonly")
+    batch_algo_combo.set("deflate")
+    batch_algo_combo.grid(row=br, column=1, padx=5, pady=5, sticky="w")
+    br += 1
+    
     ttk.Label(tab_batch, text="Output pattern:").grid(row=br, column=0, padx=5, pady=5, sticky="w")
     ttk.Entry(tab_batch, textvariable=batch_output_pattern_var, width=30).grid(row=br, column=1, padx=5, pady=5, sticky="ew")
     br+=1
+    # Algorithm (Batch)
+    
 
+    
     ttk.Checkbutton(tab_batch, text="Use DEFLATE compression", variable=batch_compress_var).grid(row=br, column=0, columnspan=2, padx=5, pady=5, sticky="w")
     br+=1
 
@@ -191,6 +207,7 @@ def launch_gui():
                     "password": batch_password_var.get() or None,
                     "legacy": batch_legacy_var.get(),
                     "format": fmt,
+                    "algo": batch_algo_combo.get(),
                 })
             if not tasks:
                 log_batch_msg("No tasks defined.")
