@@ -1,12 +1,17 @@
 # forge/core.py
-import lzma
 import zipfile
 import os
 import tempfile
 import json
+import lzma
+import shutil
 from pathlib import Path
 from .utils import format_size, parse_size_string, get_progress_printer
 from .templates import create_pptx_template, create_docx_template, create_xlsx_template
+
+# =============================================================================
+# Generation
+# =============================================================================
 
 def generate_zip(output, extracted_mb, pattern="A", compression=True, password=None,
                  progress_callback=None, legacy_crypto=False, fmt="zip", algo="deflate"):
@@ -29,10 +34,9 @@ def generate_zip(output, extracted_mb, pattern="A", compression=True, password=N
 
     # ---- 2. LZMA (XZ) mode ----
     if algo == "lzma":
-        # Auto‑correct extension to .xz
         if not output.lower().endswith(('.xz', '.lzma')):
             output = output.rsplit('.', 1)[0] + '.xz'
-        # Compress with LZMA – preset 9 = maximum compression
+        # preset=9 = max compression
         with lzma.open(output, "w", preset=9) as f:
             with open(temp_name, "rb") as src:
                 f.write(src.read())
@@ -50,18 +54,14 @@ def generate_zip(output, extracted_mb, pattern="A", compression=True, password=N
 
     # ---- 3. DEFLATE (ZIP / Office) mode ----
     if fmt in ("pptx", "docx", "xlsx"):
-        # Build the Office template folder
         with tempfile.TemporaryDirectory() as tmpdir:
             if fmt == "pptx":
-                from .templates import create_pptx_template
                 create_pptx_template(tmpdir)
                 dummy_path = "ppt/media/dummy.bin"
             elif fmt == "docx":
-                from .templates import create_docx_template
                 create_docx_template(tmpdir)
                 dummy_path = "word/media/dummy.bin"
             elif fmt == "xlsx":
-                from .templates import create_xlsx_template
                 create_xlsx_template(tmpdir)
                 dummy_path = "xl/media/dummy.bin"
             else:
@@ -69,11 +69,8 @@ def generate_zip(output, extracted_mb, pattern="A", compression=True, password=N
 
             dummy_full = Path(tmpdir) / dummy_path
             dummy_full.parent.mkdir(parents=True, exist_ok=True)
-            # Move our data file into the template
-            import shutil
             shutil.move(temp_name, dummy_full)
 
-            # Zip the whole folder with optional password & compression
             try:
                 if password:
                     import pyzipper
@@ -95,7 +92,6 @@ def generate_zip(output, extracted_mb, pattern="A", compression=True, password=N
                                 arcname = os.path.relpath(full_path, tmpdir)
                                 z.write(full_path, arcname=arcname)
             except ImportError:
-                # Fallback if pyzipper is missing
                 compress_type = zipfile.ZIP_DEFLATED if compression else zipfile.ZIP_STORED
                 with zipfile.ZipFile(output, "w", compression=compress_type) as z:
                     for root, _, files in os.walk(tmpdir):
@@ -127,7 +123,6 @@ def generate_zip(output, extracted_mb, pattern="A", compression=True, password=N
                 print("Warning: pyzipper not installed, password ignored.")
         os.remove(temp_name)
 
-    # ---- 4. Gather stats and return ----
     compressed_size = os.path.getsize(output)
     ratio = target_bytes / compressed_size if compressed_size else 0
     return {
@@ -142,9 +137,14 @@ def generate_zip(output, extracted_mb, pattern="A", compression=True, password=N
 def print_stats(stats):
     print("Created:", stats["output"])
     print("Format:", stats.get("format", "zip").upper())
+    print("Algorithm:", stats.get("algo", "deflate").upper())
     print("Compressed size:", format_size(stats["compressed_bytes"]))
     print("Extracted size:", format_size(stats["extracted_bytes"]))
     print("Compression ratio:", f"{stats['ratio']:.2f}x")
+
+# =============================================================================
+# Batch generation
+# =============================================================================
 
 def generate_batch(tasks, progress_callback=None):
     results = []
@@ -161,6 +161,7 @@ def generate_batch(tasks, progress_callback=None):
             "password": None,
             "legacy": False,
             "format": "zip",
+            "algo": "deflate",
         }
         params.update(task)
         size = params["size"]
@@ -190,38 +191,70 @@ def generate_batch(tasks, progress_callback=None):
             progress_callback=single_progress,
             legacy_crypto=params["legacy"],
             fmt=params.get("format", "zip"),
+            algo=params.get("algo", "deflate"),
         )
         results.append(stats)
     return results
 
-def extract_zip(archive, password, output_dir=None):
+# =============================================================================
+# Universal Extraction (new)
+# =============================================================================
+
+def extract_archive(archive, password=None, output_dir=None):
+    """
+    Universal decompressor:
+    - .zip / .pptx / .docx / .xlsx → ZIP extraction (supports AES + legacy passwords)
+    - .xz / .lzma → LZMA decompression
+    """
     if not os.path.exists(archive):
         raise FileNotFoundError(f"Archive not found: {archive}")
+
     if output_dir is None:
         output_dir = os.path.splitext(archive)[0] + "_extracted"
     os.makedirs(output_dir, exist_ok=True)
 
+    # ---- XZ / LZMA decompression ----
+    if archive.lower().endswith(('.xz', '.lzma')):
+        with lzma.open(archive, 'rb') as f_in:
+            base = os.path.basename(archive)
+            base = os.path.splitext(base)[0] + ".bin"
+            out_path = os.path.join(output_dir, base)
+            with open(out_path, 'wb') as f_out:
+                shutil.copyfileobj(f_in, f_out)
+        return output_dir
+
+    # ---- ZIP (and Office) decompression ----
     try:
         import pyzipper
         with pyzipper.AESZipFile(archive, 'r') as z:
             try:
-                z.setpassword(password.encode())
+                if password:
+                    z.setpassword(password.encode())
                 z.extractall(output_dir)
                 return output_dir
             except RuntimeError as e:
                 if "Bad password" in str(e) or "invalid password" in str(e).lower():
                     raise ValueError("Incorrect password")
+                # Fallback to standard zipfile
                 raise
-    except (ImportError, zipfile.BadZipFile):
+    except (ImportError, zipfile.BadZipFile, RuntimeError):
+        # Fallback to standard zipfile (supports ZipCrypto and unencrypted)
         with zipfile.ZipFile(archive, 'r') as z:
-            z.setpassword(password.encode())
+            if password:
+                z.setpassword(password.encode())
             z.extractall(output_dir)
             return output_dir
-    except Exception:
+    except Exception as e:
+        # Last resort: try standard zipfile
         with zipfile.ZipFile(archive, 'r') as z:
-            z.setpassword(password.encode())
+            if password:
+                z.setpassword(password.encode())
             z.extractall(output_dir)
             return output_dir
+
+# =============================================================================
+# CLI info (unchanged, but now also shows algorithm if present)
+# =============================================================================
 
 def cli_info(args):
     if not os.path.exists(args.zipfile):
