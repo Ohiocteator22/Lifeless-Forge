@@ -4,8 +4,9 @@ Lifeless-Forge – A ZIP compression tool with high-ratio compression,
 password protection, batch generation, and Office formats.
 """
 
-__version__ = "1.0.0"
-__author__ = "Your Name"
+# forge/__init__.py
+__version__ = "1.1.0"
+__author__ = "Lifeless"
 
 from .core import generate_zip, generate_batch, extract_zip
 from .utils import format_size, parse_size_string
