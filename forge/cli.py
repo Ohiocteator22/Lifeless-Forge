@@ -1,10 +1,10 @@
 # forge/cli.py
-from .utils import format_size, parse_size_string, get_progress_printer
 import argparse
 import sys
 import json
+import os
 from .core import generate_zip, generate_batch, extract_archive, cli_info as core_info, print_stats
-from .utils import parse_size_string, get_progress_printer
+from .utils import format_size, parse_size_string, get_progress_printer
 
 def cli_generate(args):
     progress = get_progress_printer(enable=not args.no_progress, total=args.size)
@@ -18,6 +18,7 @@ def cli_generate(args):
         legacy_crypto=args.legacy,
         fmt=args.format,
         algo=args.algo,
+        source=args.input,
     )
     print_stats(stats)
     if args.password and args.legacy:
@@ -38,10 +39,12 @@ def cli_batch(args):
         sizes = [s.strip() for s in args.series.split(',')]
         base_output = args.output_pattern or "batch_{size}.zip"
         fmt = args.format or "zip"
+        algo = args.algo or "deflate"
+        # If input is provided, it will be used for all tasks; else pattern
         for s in sizes:
             size_mb = parse_size_string(s)
             output_name = base_output.replace("{size}", str(s)).replace("{size_mb}", str(size_mb))
-            tasks.append({
+            task = {
                 "size": size_mb,
                 "output": output_name,
                 "pattern": args.pattern,
@@ -49,8 +52,11 @@ def cli_batch(args):
                 "password": args.password,
                 "legacy": args.legacy,
                 "format": fmt,
-                "algo": args.algo,
-            })
+                "algo": algo,
+            }
+            if args.input:
+                task["source"] = args.input
+            tasks.append(task)
     if not tasks:
         print("No tasks defined. Use --series or --batch-config.")
         return
@@ -65,11 +71,11 @@ def cli_batch(args):
 
     print("\n=== Batch Summary ===")
     for r in results:
-        print(f"{os.path.basename(r['output'])} ({r.get('format','zip').upper()}): {format_size(r['extracted_bytes'])} → {format_size(r['compressed_bytes'])} (ratio {r['ratio']:.2f}x)")
+        print(f"{os.path.basename(r['output'])} ({r.get('format','zip').upper()}, {r.get('algo','deflate').upper()}): {format_size(r['extracted_bytes'])} → {format_size(r['compressed_bytes'])} (ratio {r['ratio']:.2f}x)")
 
 def cli_extract(args):
     try:
-        out_dir = extract_zip(args.archive, args.password, args.output_dir)
+        out_dir = extract_archive(args.archive, args.password, args.output_dir)
         print(f"Extracted to: {out_dir}")
     except Exception as e:
         print(f"Error: {e}")
@@ -80,34 +86,34 @@ def setup_cli_parser():
     subparsers = parser.add_subparsers(dest="command", required=True, help="Subcommands")
 
     gen = subparsers.add_parser("generate", help="Generate a single archive")
-    gen.add_argument("-s", "--size", type=int, default=60, help="Extracted size in MB")
+    gen.add_argument("-s", "--size", type=int, default=60, help="Extracted size in MB (ignored if --input is used)")
+    gen.add_argument("-i", "--input", help="Input file or folder to compress (overrides pattern generation)")
     gen.add_argument("-o", "--output", default="compression_demo.zip", help="Output filename")
-    gen.add_argument("-p", "--pattern", default="A", help="Character pattern")
+    gen.add_argument("-p", "--pattern", default="A", help="Character pattern (used only if no --input)")
     gen.add_argument("--format", choices=["zip", "pptx", "docx", "xlsx"], default="zip", help="Output format")
-    gen.add_argument("--store", action="store_true", help="Use no compression")
-    gen.add_argument("--password", help="Password for encryption")
-    gen.add_argument("--legacy", action="store_true", help="Use legacy ZipCrypto")
+    gen.add_argument("--algo", choices=["deflate", "lzma"], default="deflate", help="Compression algorithm")
+    gen.add_argument("--store", action="store_true", help="Use no compression (ZIP only)")
+    gen.add_argument("--password", help="Password for encryption (ZIP only)")
+    gen.add_argument("--legacy", action="store_true", help="Use legacy ZipCrypto (ZIP only)")
     gen.add_argument("--no-progress", action="store_true", help="Disable progress bar")
-    gen.add_argument("--algo", choices=["deflate", "lzma"], default="deflate",
-                 help="Compression algorithm: deflate (ZIP) or lzma (XZ)")
     gen.set_defaults(func=cli_generate)
 
     batch = subparsers.add_parser("batch", help="Generate multiple archives")
-    batch.add_argument("--series", help="Comma-separated sizes")
-    batch.add_argument("--batch-config", help="JSON file with task list")
+    batch.add_argument("--series", help="Comma-separated sizes (e.g., 10,50,100)")
+    batch.add_argument("--batch-config", help="JSON file with task list (can include 'source' per task)")
+    batch.add_argument("-i", "--input", help="Input file/folder to use for all tasks (overrides patterns)")
     batch.add_argument("-o", "--output-pattern", help="Pattern with {size} placeholder")
-    batch.add_argument("-p", "--pattern", default="A", help="Character pattern (for --series)")
-    batch.add_argument("--format", choices=["zip", "pptx", "docx", "xlsx"], default="zip", help="Format (for --series)")
-    batch.add_argument("--store", action="store_true", help="No compression (for --series)")
-    batch.add_argument("--password", help="Password (for --series)")
-    batch.add_argument("--legacy", action="store_true", help="Legacy encryption (for --series)")
-    batch.add_argument("--algo", choices=["deflate", "lzma"], default="deflate",
-                   help="Algorithm for all tasks (when using --series)")
+    batch.add_argument("-p", "--pattern", default="A", help="Pattern (only if no --input)")
+    batch.add_argument("--format", choices=["zip", "pptx", "docx", "xlsx"], default="zip")
+    batch.add_argument("--algo", choices=["deflate", "lzma"], default="deflate")
+    batch.add_argument("--store", action="store_true", help="No compression")
+    batch.add_argument("--password", help="Password (ZIP only)")
+    batch.add_argument("--legacy", action="store_true", help="Legacy encryption")
     batch.set_defaults(func=cli_batch)
 
     ext = subparsers.add_parser("extract", help="Extract a password-protected archive")
     ext.add_argument("archive", help="Path to archive")
-    ext.add_argument("-p", "--password", required=True, help="Password")
+    ext.add_argument("-p", "--password", help="Password (if needed)")
     ext.add_argument("-o", "--output-dir", help="Output directory")
     ext.set_defaults(func=cli_extract)
 
