@@ -11,9 +11,9 @@ from .utils import format_size, parse_size_string
 def launch_gui():
     root = tk.Tk()
     root.title("Lifeless-Forge – Compression Tool")
-    root.geometry("700x650")
+    root.geometry("720x700")
     root.resizable(False, False)
-    root.iconbitmap(resource_path("app_icon.ico"))  # from helper below
+    root.iconbitmap(resource_path("app_icon.ico"))
 
     nb = ttk.Notebook(root)
     nb.pack(fill="both", expand=True, padx=5, pady=5)
@@ -22,6 +22,7 @@ def launch_gui():
     tab_single = ttk.Frame(nb)
     nb.add(tab_single, text="Single Generate")
 
+    # Variables
     size_var = tk.IntVar(value=60)
     pattern_var = tk.StringVar(value="A")
     output_var = tk.StringVar(value="compression_demo.zip")
@@ -30,50 +31,70 @@ def launch_gui():
     legacy_var = tk.BooleanVar(value=False)
     format_var = tk.StringVar(value="zip")
     algo_var = tk.StringVar(value="deflate")
+    input_path_var = tk.StringVar(value="")
+    input_is_folder_var = tk.BooleanVar(value=False)
 
-    row=0
-    ttk.Label(tab_single, text="Size (MB):").grid(row=row, column=0, padx=5, pady=5, sticky="w")
+    row = 0
+
+    # ---- Input Section ----
+    ttk.Label(tab_single, text="Input (optional):").grid(row=row, column=0, padx=5, pady=5, sticky="w")
+    ttk.Entry(tab_single, textvariable=input_path_var, width=30).grid(row=row, column=1, padx=5, pady=5, sticky="ew")
+    def browse_input():
+        if input_is_folder_var.get():
+            folder = filedialog.askdirectory()
+            if folder:
+                input_path_var.set(folder)
+        else:
+            file = filedialog.askopenfilename()
+            if file:
+                input_path_var.set(file)
+    ttk.Button(tab_single, text="Browse", command=browse_input).grid(row=row, column=2, padx=5, pady=5)
+    row += 1
+    ttk.Checkbutton(tab_single, text="Input is a Folder", variable=input_is_folder_var).grid(row=row, column=1, padx=5, pady=5, sticky="w")
+    row += 1
+
+    ttk.Label(tab_single, text="Size (MB, if no input):").grid(row=row, column=0, padx=5, pady=5, sticky="w")
     ttk.Scale(tab_single, from_=1, to=1000, orient="horizontal", variable=size_var).grid(row=row, column=1, padx=5, pady=5, sticky="ew")
     ttk.Label(tab_single, textvariable=size_var).grid(row=row, column=2, padx=5, pady=5)
-    row+=1
+    row += 1
 
-    ttk.Label(tab_single, text="Pattern:").grid(row=row, column=0, padx=5, pady=5, sticky="w")
+    ttk.Label(tab_single, text="Pattern (if no input):").grid(row=row, column=0, padx=5, pady=5, sticky="w")
     ttk.Entry(tab_single, textvariable=pattern_var, width=10).grid(row=row, column=1, padx=5, pady=5, sticky="w")
-    row+=1
+    row += 1
 
     ttk.Label(tab_single, text="Format:").grid(row=row, column=0, padx=5, pady=5, sticky="w")
     format_combo = ttk.Combobox(tab_single, textvariable=format_var, values=["zip", "pptx", "docx", "xlsx"], state="readonly")
     format_combo.grid(row=row, column=1, padx=5, pady=5, sticky="w")
-    row+=1
+    row += 1
 
     ttk.Label(tab_single, text="Algorithm:").grid(row=row, column=0, padx=5, pady=5, sticky="w")
     algo_combo = ttk.Combobox(tab_single, textvariable=algo_var, values=["deflate", "lzma"], state="readonly")
     algo_combo.set("deflate")
     algo_combo.grid(row=row, column=1, padx=5, pady=5, sticky="w")
-    row+=1
+    row += 1
 
     ttk.Label(tab_single, text="Output:").grid(row=row, column=0, padx=5, pady=5, sticky="w")
     ttk.Entry(tab_single, textvariable=output_var, width=30).grid(row=row, column=1, padx=5, pady=5, sticky="ew")
     ttk.Button(tab_single, text="Browse", command=lambda: output_var.set(filedialog.asksaveasfilename(defaultextension="."+format_var.get()))).grid(row=row, column=2, padx=5, pady=5)
-    row+=1
+    row += 1
 
     ttk.Checkbutton(tab_single, text="Use DEFLATE compression", variable=compress_var).grid(row=row, column=0, columnspan=2, padx=5, pady=5, sticky="w")
-    row+=1
+    row += 1
 
-    ttk.Label(tab_single, text="Password:").grid(row=row, column=0, padx=5, pady=5, sticky="w")
+    ttk.Label(tab_single, text="Password (ZIP only):").grid(row=row, column=0, padx=5, pady=5, sticky="w")
     ttk.Entry(tab_single, textvariable=password_var, show="*", width=20).grid(row=row, column=1, padx=5, pady=5, sticky="w")
-    row+=1
+    row += 1
 
     ttk.Checkbutton(tab_single, text="Legacy ZipCrypto (Windows native)", variable=legacy_var).grid(row=row, column=0, columnspan=3, padx=5, pady=5, sticky="w")
-    row+=1
+    row += 1
 
     log_single = tk.Text(tab_single, height=8, state="disabled", wrap="word")
     log_single.grid(row=row, column=0, columnspan=3, padx=5, pady=5, sticky="nsew")
-    row+=1
+    row += 1
 
     progress_single = ttk.Progressbar(tab_single, orient="horizontal", length=400, mode="determinate")
     progress_single.grid(row=row, column=0, columnspan=3, padx=5, pady=5)
-    row+=1
+    row += 1
 
     def log_single_msg(msg):
         log_single.config(state="normal")
@@ -86,12 +107,25 @@ def launch_gui():
         progress_single["value"] = 0
         log_single_msg("Starting generation...")
         try:
+            source = input_path_var.get() if input_path_var.get().strip() else None
+            if source and os.path.exists(source):
+                # Use input source
+                log_single_msg(f"Using input: {source}")
+                # Size parameter will be ignored if source provided
+                size_mb = None
+            else:
+                source = None
+                size_mb = size_var.get()
+                log_single_msg(f"Generating pattern ({size_mb} MB)")
+
             def upd(cur, total):
-                progress_single["value"] = (cur/total)*100
+                if total:
+                    progress_single["value"] = (cur/total)*100
                 root.update_idletasks()
+
             stats = generate_zip(
                 output=output_var.get(),
-                extracted_mb=size_var.get(),
+                extracted_mb=size_mb,
                 pattern=pattern_var.get(),
                 compression=compress_var.get(),
                 password=password_var.get() or None,
@@ -99,6 +133,7 @@ def launch_gui():
                 legacy_crypto=legacy_var.get(),
                 fmt=format_var.get(),
                 algo=algo_var.get(),
+                source=source,
             )
             log_single_msg(f"Created: {stats['output']} ({stats['format'].upper()})")
             log_single_msg(f"Algorithm: {stats['algo'].upper()}")
@@ -129,45 +164,64 @@ def launch_gui():
     batch_compress_var = tk.BooleanVar(value=True)
     batch_password_var = tk.StringVar(value="")
     batch_legacy_var = tk.BooleanVar(value=False)
+    batch_input_path_var = tk.StringVar(value="")
+    batch_input_is_folder_var = tk.BooleanVar(value=False)
 
     br=0
-    ttk.Label(tab_batch, text="Sizes (comma-separated):").grid(row=br, column=0, padx=5, pady=5, sticky="w")
-    ttk.Entry(tab_batch, textvariable=batch_sizes_var, width=30).grid(row=br, column=1, padx=5, pady=5, sticky="ew")
-    br+=1
 
-    ttk.Label(tab_batch, text="Pattern:").grid(row=br, column=0, padx=5, pady=5, sticky="w")
+    ttk.Label(tab_batch, text="Input (optional, used for all tasks):").grid(row=br, column=0, padx=5, pady=5, sticky="w")
+    ttk.Entry(tab_batch, textvariable=batch_input_path_var, width=30).grid(row=br, column=1, padx=5, pady=5, sticky="ew")
+    def batch_browse_input():
+        if batch_input_is_folder_var.get():
+            folder = filedialog.askdirectory()
+            if folder:
+                batch_input_path_var.set(folder)
+        else:
+            file = filedialog.askopenfilename()
+            if file:
+                batch_input_path_var.set(file)
+    ttk.Button(tab_batch, text="Browse", command=batch_browse_input).grid(row=br, column=2, padx=5, pady=5)
+    br += 1
+    ttk.Checkbutton(tab_batch, text="Input is a Folder", variable=batch_input_is_folder_var).grid(row=br, column=1, padx=5, pady=5, sticky="w")
+    br += 1
+
+    ttk.Label(tab_batch, text="Sizes (comma-separated, ignored if input set):").grid(row=br, column=0, padx=5, pady=5, sticky="w")
+    ttk.Entry(tab_batch, textvariable=batch_sizes_var, width=30).grid(row=br, column=1, padx=5, pady=5, sticky="ew")
+    br += 1
+
+    ttk.Label(tab_batch, text="Pattern (if no input):").grid(row=br, column=0, padx=5, pady=5, sticky="w")
     ttk.Entry(tab_batch, textvariable=batch_pattern_var, width=10).grid(row=br, column=1, padx=5, pady=5, sticky="w")
-    br+=1
+    br += 1
 
     ttk.Label(tab_batch, text="Format:").grid(row=br, column=0, padx=5, pady=5, sticky="w")
     ttk.Combobox(tab_batch, textvariable=batch_format_var, values=["zip", "pptx", "docx", "xlsx"], state="readonly").grid(row=br, column=1, padx=5, pady=5, sticky="w")
-    br+=1
+    br += 1
 
     ttk.Label(tab_batch, text="Algorithm:").grid(row=br, column=0, padx=5, pady=5, sticky="w")
     ttk.Combobox(tab_batch, textvariable=batch_algo_var, values=["deflate", "lzma"], state="readonly").grid(row=br, column=1, padx=5, pady=5, sticky="w")
-    br+=1
+    br += 1
 
     ttk.Label(tab_batch, text="Output pattern:").grid(row=br, column=0, padx=5, pady=5, sticky="w")
     ttk.Entry(tab_batch, textvariable=batch_output_pattern_var, width=30).grid(row=br, column=1, padx=5, pady=5, sticky="ew")
-    br+=1
+    br += 1
 
     ttk.Checkbutton(tab_batch, text="Use DEFLATE compression", variable=batch_compress_var).grid(row=br, column=0, columnspan=2, padx=5, pady=5, sticky="w")
-    br+=1
+    br += 1
 
-    ttk.Label(tab_batch, text="Password:").grid(row=br, column=0, padx=5, pady=5, sticky="w")
+    ttk.Label(tab_batch, text="Password (ZIP only):").grid(row=br, column=0, padx=5, pady=5, sticky="w")
     ttk.Entry(tab_batch, textvariable=batch_password_var, show="*", width=20).grid(row=br, column=1, padx=5, pady=5, sticky="w")
-    br+=1
+    br += 1
 
     ttk.Checkbutton(tab_batch, text="Legacy ZipCrypto", variable=batch_legacy_var).grid(row=br, column=0, columnspan=2, padx=5, pady=5, sticky="w")
-    br+=1
+    br += 1
 
     batch_log = tk.Text(tab_batch, height=8, state="disabled", wrap="word")
     batch_log.grid(row=br, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
-    br+=1
+    br += 1
 
     batch_progress_bar = ttk.Progressbar(tab_batch, orient="horizontal", length=400, mode="determinate")
     batch_progress_bar.grid(row=br, column=0, columnspan=2, padx=5, pady=5)
-    br+=1
+    br += 1
 
     def log_batch_msg(msg):
         batch_log.config(state="normal")
@@ -184,10 +238,13 @@ def launch_gui():
             tasks = []
             fmt = batch_format_var.get()
             algo = batch_algo_var.get()
+            source = batch_input_path_var.get() if batch_input_path_var.get().strip() else None
+            if source and not os.path.exists(source):
+                raise ValueError(f"Input source not found: {source}")
             for s in size_strs:
                 size_mb = parse_size_string(s)
                 out_name = batch_output_pattern_var.get().replace("{size}", s).replace("{size_mb}", str(size_mb))
-                tasks.append({
+                task = {
                     "size": size_mb,
                     "output": out_name,
                     "pattern": batch_pattern_var.get(),
@@ -196,7 +253,10 @@ def launch_gui():
                     "legacy": batch_legacy_var.get(),
                     "format": fmt,
                     "algo": algo,
-                })
+                }
+                if source:
+                    task["source"] = source
+                tasks.append(task)
             if not tasks:
                 log_batch_msg("No tasks defined.")
                 return
@@ -229,9 +289,10 @@ def launch_gui():
         archive = filedialog.askopenfilename(
             title="Select archive",
             filetypes=[
-                ("All archives", "*.zip *.xz *.lzma *.pptx *.docx *.xlsx"),
+                ("All archives", "*.zip *.xz *.lzma *.tar.xz *.txz *.pptx *.docx *.xlsx"),
                 ("ZIP files", "*.zip"),
-                ("XZ files", "*.xz"),
+                ("XZ files", "*.xz *.lzma"),
+                ("TAR.XZ files", "*.tar.xz *.txz"),
                 ("PPTX files", "*.pptx"),
                 ("DOCX files", "*.docx"),
                 ("XLSX files", "*.xlsx")
@@ -242,10 +303,10 @@ def launch_gui():
         # Only ask for password if it's a ZIP/Office file (not XZ)
         if archive.lower().endswith(('.zip', '.pptx', '.docx', '.xlsx')):
             pwd = simpledialog.askstring("Password", "Enter password (if needed):", show='*')
-            if pwd is None:  # User cancelled
+            if pwd is None:
                 return
         else:
-            pwd = None  # No password for XZ files
+            pwd = None
 
         try:
             out = extract_archive(archive, pwd)
@@ -254,13 +315,13 @@ def launch_gui():
             messagebox.showerror("Error", str(e))
 
     def do_info():
-        archive = filedialog.askopenfilename(title="Select archive", filetypes=[("All archives", "*.zip *.pptx *.docx *.xlsx *.xz *.lzma")])
+        archive = filedialog.askopenfilename(title="Select archive", filetypes=[("All archives", "*.zip *.pptx *.docx *.xlsx *.xz *.lzma *.tar.xz *.txz")])
         if not archive: return
         try:
-            # For XZ, we can't use zipfile. We'll just show basic info.
-            if archive.lower().endswith(('.xz', '.lzma')):
+            # For XZ/tar.xz, show limited info
+            if archive.lower().endswith(('.xz', '.lzma', '.tar.xz', '.txz')):
                 size = os.path.getsize(archive)
-                msg = f"Archive: {os.path.basename(archive)}\nType: LZMA/XZ\nCompressed size: {format_size(size)}\n(Info for XZ files limited)"
+                msg = f"Archive: {os.path.basename(archive)}\nType: LZMA-based\nCompressed size: {format_size(size)}\n(Detailed info not available for this format)"
                 messagebox.showinfo("Archive Info", msg)
                 return
 
@@ -283,8 +344,6 @@ def launch_gui():
 
     root.mainloop()
 
-# --- Helper to find resources (for PyInstaller) ---
-import sys
 def resource_path(relative_path):
     try:
         base_path = sys._MEIPASS
