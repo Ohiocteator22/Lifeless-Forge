@@ -3,7 +3,7 @@ from .utils import format_size, parse_size_string, get_progress_printer
 import argparse
 import sys
 import json
-from .core import generate_zip, generate_batch, extract_zip, cli_info as core_info, print_stats
+from .core import generate_zip, generate_batch, extract_archive, cli_info as core_info, print_stats
 from .utils import parse_size_string, get_progress_printer
 
 def cli_generate(args):
