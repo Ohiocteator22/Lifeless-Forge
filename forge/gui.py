@@ -1,31 +1,20 @@
 # forge/gui.py
 import sys
-import zipfile
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 import os
+import zipfile
 from .core import generate_zip, generate_batch, extract_archive
 from .utils import format_size, parse_size_string
-import sys
-import os
-
-def resource_path(relative_path):
-    """Get absolute path to resource, works for dev and for PyInstaller."""
-    try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
-    except AttributeError:
-        # Running as a normal Python script
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
 
 def launch_gui():
     root = tk.Tk()
     root.title("Lifeless-Forge – Compression Tool")
     root.geometry("700x650")
     root.resizable(False, False)
-    root.iconbitmap(resource_path("app_icon.ico"))
+    root.iconbitmap(resource_path("app_icon.ico"))  # from helper below
+
     nb = ttk.Notebook(root)
     nb.pack(fill="both", expand=True, padx=5, pady=5)
 
@@ -40,6 +29,7 @@ def launch_gui():
     password_var = tk.StringVar(value="")
     legacy_var = tk.BooleanVar(value=False)
     format_var = tk.StringVar(value="zip")
+    algo_var = tk.StringVar(value="deflate")
 
     row=0
     ttk.Label(tab_single, text="Size (MB):").grid(row=row, column=0, padx=5, pady=5, sticky="w")
@@ -55,12 +45,12 @@ def launch_gui():
     format_combo = ttk.Combobox(tab_single, textvariable=format_var, values=["zip", "pptx", "docx", "xlsx"], state="readonly")
     format_combo.grid(row=row, column=1, padx=5, pady=5, sticky="w")
     row+=1
-    # Algorithm
+
     ttk.Label(tab_single, text="Algorithm:").grid(row=row, column=0, padx=5, pady=5, sticky="w")
-    algo_combo = ttk.Combobox(tab_single, values=["deflate", "lzma"], state="readonly")
+    algo_combo = ttk.Combobox(tab_single, textvariable=algo_var, values=["deflate", "lzma"], state="readonly")
     algo_combo.set("deflate")
     algo_combo.grid(row=row, column=1, padx=5, pady=5, sticky="w")
-    row += 1
+    row+=1
 
     ttk.Label(tab_single, text="Output:").grid(row=row, column=0, padx=5, pady=5, sticky="w")
     ttk.Entry(tab_single, textvariable=output_var, width=30).grid(row=row, column=1, padx=5, pady=5, sticky="ew")
@@ -108,9 +98,10 @@ def launch_gui():
                 progress_callback=upd,
                 legacy_crypto=legacy_var.get(),
                 fmt=format_var.get(),
-                algo=algo_combo.get(),
+                algo=algo_var.get(),
             )
             log_single_msg(f"Created: {stats['output']} ({stats['format'].upper()})")
+            log_single_msg(f"Algorithm: {stats['algo'].upper()}")
             log_single_msg(f"Compressed: {format_size(stats['compressed_bytes'])}")
             log_single_msg(f"Extracted:  {format_size(stats['extracted_bytes'])}")
             log_single_msg(f"Ratio: {stats['ratio']:.2f}x")
@@ -133,6 +124,7 @@ def launch_gui():
     batch_sizes_var = tk.StringVar(value="10, 50, 100, 500")
     batch_pattern_var = tk.StringVar(value="A")
     batch_format_var = tk.StringVar(value="zip")
+    batch_algo_var = tk.StringVar(value="deflate")
     batch_output_pattern_var = tk.StringVar(value="batch_{size}.zip")
     batch_compress_var = tk.BooleanVar(value=True)
     batch_password_var = tk.StringVar(value="")
@@ -150,20 +142,15 @@ def launch_gui():
     ttk.Label(tab_batch, text="Format:").grid(row=br, column=0, padx=5, pady=5, sticky="w")
     ttk.Combobox(tab_batch, textvariable=batch_format_var, values=["zip", "pptx", "docx", "xlsx"], state="readonly").grid(row=br, column=1, padx=5, pady=5, sticky="w")
     br+=1
-    
+
     ttk.Label(tab_batch, text="Algorithm:").grid(row=br, column=0, padx=5, pady=5, sticky="w")
-    batch_algo_combo = ttk.Combobox(tab_batch, values=["deflate", "lzma"], state="readonly")
-    batch_algo_combo.set("deflate")
-    batch_algo_combo.grid(row=br, column=1, padx=5, pady=5, sticky="w")
-    br += 1
-    
+    ttk.Combobox(tab_batch, textvariable=batch_algo_var, values=["deflate", "lzma"], state="readonly").grid(row=br, column=1, padx=5, pady=5, sticky="w")
+    br+=1
+
     ttk.Label(tab_batch, text="Output pattern:").grid(row=br, column=0, padx=5, pady=5, sticky="w")
     ttk.Entry(tab_batch, textvariable=batch_output_pattern_var, width=30).grid(row=br, column=1, padx=5, pady=5, sticky="ew")
     br+=1
-    # Algorithm (Batch)
-    
 
-    
     ttk.Checkbutton(tab_batch, text="Use DEFLATE compression", variable=batch_compress_var).grid(row=br, column=0, columnspan=2, padx=5, pady=5, sticky="w")
     br+=1
 
@@ -196,6 +183,7 @@ def launch_gui():
             size_strs = [s.strip() for s in batch_sizes_var.get().split(',') if s.strip()]
             tasks = []
             fmt = batch_format_var.get()
+            algo = batch_algo_var.get()
             for s in size_strs:
                 size_mb = parse_size_string(s)
                 out_name = batch_output_pattern_var.get().replace("{size}", s).replace("{size_mb}", str(size_mb))
@@ -207,7 +195,7 @@ def launch_gui():
                     "password": batch_password_var.get() or None,
                     "legacy": batch_legacy_var.get(),
                     "format": fmt,
-                    "algo": batch_algo_combo.get(),
+                    "algo": algo,
                 })
             if not tasks:
                 log_batch_msg("No tasks defined.")
@@ -220,7 +208,7 @@ def launch_gui():
             results = generate_batch(tasks, progress_callback=batch_progress)
             log_batch_msg("\n=== Summary ===")
             for r in results:
-                log_batch_msg(f"{os.path.basename(r['output'])} ({r['format'].upper()}): {format_size(r['extracted_bytes'])} → {format_size(r['compressed_bytes'])} (ratio {r['ratio']:.2f}x)")
+                log_batch_msg(f"{os.path.basename(r['output'])} ({r['format'].upper()}, {r['algo'].upper()}): {format_size(r['extracted_bytes'])} → {format_size(r['compressed_bytes'])} (ratio {r['ratio']:.2f}x)")
         except Exception as e:
             log_batch_msg(f"Error: {e}")
         finally:
@@ -238,20 +226,44 @@ def launch_gui():
     nb.add(tab_extra, text="Extract / Info")
 
     def do_extract():
-        archive = filedialog.askopenfilename(title="Select archive", filetypes=[("All archives", "*.zip *.pptx *.docx *.xlsx"), ("ZIP", "*.zip"), ("PPTX", "*.pptx"), ("DOCX", "*.docx"), ("XLSX", "*.xlsx")])
+        archive = filedialog.askopenfilename(
+            title="Select archive",
+            filetypes=[
+                ("All archives", "*.zip *.xz *.lzma *.pptx *.docx *.xlsx"),
+                ("ZIP files", "*.zip"),
+                ("XZ files", "*.xz"),
+                ("PPTX files", "*.pptx"),
+                ("DOCX files", "*.docx"),
+                ("XLSX files", "*.xlsx")
+            ]
+        )
         if not archive: return
-        pwd = simpledialog.askstring("Password", "Enter password:", show='*')
-        if pwd is None: return
+
+        # Only ask for password if it's a ZIP/Office file (not XZ)
+        if archive.lower().endswith(('.zip', '.pptx', '.docx', '.xlsx')):
+            pwd = simpledialog.askstring("Password", "Enter password (if needed):", show='*')
+            if pwd is None:  # User cancelled
+                return
+        else:
+            pwd = None  # No password for XZ files
+
         try:
-            out = extract_zip(archive, pwd)
+            out = extract_archive(archive, pwd)
             messagebox.showinfo("Success", f"Extracted to: {out}")
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
     def do_info():
-        archive = filedialog.askopenfilename(title="Select archive", filetypes=[("All archives", "*.zip *.pptx *.docx *.xlsx")])
+        archive = filedialog.askopenfilename(title="Select archive", filetypes=[("All archives", "*.zip *.pptx *.docx *.xlsx *.xz *.lzma")])
         if not archive: return
         try:
+            # For XZ, we can't use zipfile. We'll just show basic info.
+            if archive.lower().endswith(('.xz', '.lzma')):
+                size = os.path.getsize(archive)
+                msg = f"Archive: {os.path.basename(archive)}\nType: LZMA/XZ\nCompressed size: {format_size(size)}\n(Info for XZ files limited)"
+                messagebox.showinfo("Archive Info", msg)
+                return
+
             with zipfile.ZipFile(archive, 'r') as z:
                 info = z.infolist()
                 total_compressed = sum(f.compress_size for f in info)
@@ -270,3 +282,12 @@ def launch_gui():
     ttk.Button(tab_extra, text="Show Info", command=do_info).pack(pady=10)
 
     root.mainloop()
+
+# --- Helper to find resources (for PyInstaller) ---
+import sys
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
