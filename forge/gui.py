@@ -5,7 +5,7 @@ import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 import os
-from .core import generate_zip, generate_batch, extract_zip
+from .core import generate_zip, generate_batch, extract_archive
 from .utils import format_size, parse_size_string
 import sys
 import os
