@@ -36,7 +36,6 @@ def generate_zip(output, extracted_mb, pattern="A", compression=True, password=N
     if algo == "lzma":
         if not output.lower().endswith(('.xz', '.lzma')):
             output = output.rsplit('.', 1)[0] + '.xz'
-        # preset=9 = max compression
         with lzma.open(output, "w", preset=9) as f:
             with open(temp_name, "rb") as src:
                 f.write(src.read())
@@ -197,7 +196,7 @@ def generate_batch(tasks, progress_callback=None):
     return results
 
 # =============================================================================
-# Universal Extraction (new)
+# Universal Extraction
 # =============================================================================
 
 def extract_archive(archive, password=None, output_dir=None):
@@ -215,13 +214,16 @@ def extract_archive(archive, password=None, output_dir=None):
 
     # ---- XZ / LZMA decompression ----
     if archive.lower().endswith(('.xz', '.lzma')):
-        with lzma.open(archive, 'rb') as f_in:
-            base = os.path.basename(archive)
-            base = os.path.splitext(base)[0] + ".bin"
-            out_path = os.path.join(output_dir, base)
-            with open(out_path, 'wb') as f_out:
-                shutil.copyfileobj(f_in, f_out)
-        return output_dir
+        try:
+            with lzma.open(archive, 'rb') as f_in:
+                base = os.path.basename(archive)
+                base = os.path.splitext(base)[0] + ".bin"
+                out_path = os.path.join(output_dir, base)
+                with open(out_path, 'wb') as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+            return output_dir
+        except lzma.LZMAError as e:
+            raise ValueError(f"Failed to decompress XZ file (corrupt?): {e}")
 
     # ---- ZIP (and Office) decompression ----
     try:
@@ -253,13 +255,22 @@ def extract_archive(archive, password=None, output_dir=None):
             return output_dir
 
 # =============================================================================
-# CLI info (unchanged, but now also shows algorithm if present)
+# CLI info
 # =============================================================================
 
 def cli_info(args):
     if not os.path.exists(args.zipfile):
         print(f"File not found: {args.zipfile}")
         return
+    # Handle XZ files
+    if args.zipfile.lower().endswith(('.xz', '.lzma')):
+        size = os.path.getsize(args.zipfile)
+        print(f"Archive: {args.zipfile}")
+        print("Type: LZMA/XZ")
+        print(f"Compressed size: {format_size(size)}")
+        print("(Info for XZ files is limited)")
+        return
+
     try:
         with zipfile.ZipFile(args.zipfile, 'r') as z:
             info = z.infolist()
