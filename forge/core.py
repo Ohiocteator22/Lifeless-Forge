@@ -5,53 +5,124 @@ import tempfile
 import json
 import lzma
 import shutil
+import tarfile
 from pathlib import Path
 from .utils import format_size, parse_size_string, get_progress_printer
 from .templates import create_pptx_template, create_docx_template, create_xlsx_template
 
 # =============================================================================
+# Helper: Get total size of a file/folder
+# =============================================================================
+
+def get_total_size(path):
+    """Return total size in bytes of a file or folder."""
+    if os.path.isfile(path):
+        return os.path.getsize(path)
+    total = 0
+    for root, _, files in os.walk(path):
+        for f in files:
+            total += os.path.getsize(os.path.join(root, f))
+    return total
+
+# =============================================================================
 # Generation
 # =============================================================================
 
-def generate_zip(output, extracted_mb, pattern="A", compression=True, password=None,
-                 progress_callback=None, legacy_crypto=False, fmt="zip", algo="deflate"):
-    target_bytes = extracted_mb * 1024 * 1024
-    chunk = (pattern * (1024 * 1024)).encode()
-
-    # ---- 1. Create the temporary data file ----
-    with tempfile.NamedTemporaryFile(delete=False) as tmp:
-        temp_name = tmp.name
-        written = 0
-        if progress_callback:
-            progress_callback(0, extracted_mb)
-        while written < target_bytes:
-            remaining = target_bytes - written
-            write_size = min(len(chunk), remaining)
-            tmp.write(chunk[:write_size])
-            written += write_size
-            if progress_callback:
-                progress_callback(written // (1024*1024), extracted_mb)
+def generate_zip(output, extracted_mb=None, pattern="A", compression=True, password=None,
+                 progress_callback=None, legacy_crypto=False, fmt="zip", algo="deflate",
+                 source=None):
+    """
+    Generate a compressed archive.
+    If source is provided, compress that file/folder.
+    Otherwise, generate synthetic pattern of size extracted_mb MB.
+    """
+    # ---- 1. Determine input source ----
+    if source is not None:
+        if not os.path.exists(source):
+            raise FileNotFoundError(f"Input source not found: {source}")
+        # For Office formats, we only support a single file (not folder)
+        if fmt in ("pptx", "docx", "xlsx") and os.path.isdir(source):
+            raise ValueError(f"Office format '{fmt}' does not support folders. Please provide a single file.")
+        # Compute target size for progress
+        target_bytes = get_total_size(source)
+        # We'll use source as the data source, no pattern needed
+        use_pattern = False
+    else:
+        if extracted_mb is None:
+            raise ValueError("Either source or extracted_mb must be provided.")
+        target_bytes = extracted_mb * 1024 * 1024
+        use_pattern = True
+        chunk = (pattern * (1024 * 1024)).encode()
 
     # ---- 2. LZMA (XZ) mode ----
     if algo == "lzma":
-        if not output.lower().endswith(('.xz', '.lzma')):
-            output = output.rsplit('.', 1)[0] + '.xz'
-        with lzma.open(output, "w", preset=9) as f:
-            with open(temp_name, "rb") as src:
-                f.write(src.read())
-        os.remove(temp_name)
-        compressed_size = os.path.getsize(output)
-        ratio = target_bytes / compressed_size if compressed_size else 0
-        return {
-            "output": output,
-            "extracted_bytes": target_bytes,
-            "compressed_bytes": compressed_size,
-            "ratio": ratio,
-            "format": "xz",
-            "algo": "lzma",
-        }
+        # For folders, we create a .tar.xz; for files, direct .xz
+        if source is not None and os.path.isdir(source):
+            # Create .tar.xz
+            if not output.lower().endswith(('.tar.xz', '.txz')):
+                output = output.rsplit('.', 1)[0] + '.tar.xz'
+            with tarfile.open(output, "w:xz", preset=9) as tar:
+                tar.add(source, arcname=os.path.basename(source))
+            compressed_size = os.path.getsize(output)
+            ratio = target_bytes / compressed_size if compressed_size else 0
+            return {
+                "output": output,
+                "extracted_bytes": target_bytes,
+                "compressed_bytes": compressed_size,
+                "ratio": ratio,
+                "format": "tar.xz",
+                "algo": "lzma",
+            }
+        else:
+            # Single file or pattern
+            if not output.lower().endswith(('.xz', '.lzma')):
+                output = output.rsplit('.', 1)[0] + '.xz'
+            if source is not None and os.path.isfile(source):
+                # Compress the file directly with lzma
+                with lzma.open(output, "w", preset=9) as f_out:
+                    with open(source, "rb") as f_in:
+                        shutil.copyfileobj(f_in, f_out)
+                compressed_size = os.path.getsize(output)
+                ratio = target_bytes / compressed_size if compressed_size else 0
+                return {
+                    "output": output,
+                    "extracted_bytes": target_bytes,
+                    "compressed_bytes": compressed_size,
+                    "ratio": ratio,
+                    "format": "xz",
+                    "algo": "lzma",
+                }
+            else:
+                # Generate pattern data and compress with lzma
+                with tempfile.NamedTemporaryFile(delete=False) as tmp:
+                    temp_name = tmp.name
+                    written = 0
+                    if progress_callback:
+                        progress_callback(0, extracted_mb)
+                    while written < target_bytes:
+                        remaining = target_bytes - written
+                        write_size = min(len(chunk), remaining)
+                        tmp.write(chunk[:write_size])
+                        written += write_size
+                        if progress_callback:
+                            progress_callback(written // (1024*1024), extracted_mb)
+                with lzma.open(output, "w", preset=9) as f:
+                    with open(temp_name, "rb") as src:
+                        f.write(src.read())
+                os.remove(temp_name)
+                compressed_size = os.path.getsize(output)
+                ratio = target_bytes / compressed_size if compressed_size else 0
+                return {
+                    "output": output,
+                    "extracted_bytes": target_bytes,
+                    "compressed_bytes": compressed_size,
+                    "ratio": ratio,
+                    "format": "xz",
+                    "algo": "lzma",
+                }
 
     # ---- 3. DEFLATE (ZIP / Office) mode ----
+    # For Office formats, we embed the source or pattern into the Office structure
     if fmt in ("pptx", "docx", "xlsx"):
         with tempfile.TemporaryDirectory() as tmpdir:
             if fmt == "pptx":
@@ -68,8 +139,26 @@ def generate_zip(output, extracted_mb, pattern="A", compression=True, password=N
 
             dummy_full = Path(tmpdir) / dummy_path
             dummy_full.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(temp_name, dummy_full)
 
+            # Write data to dummy file
+            if source is not None and os.path.isfile(source):
+                # Copy the input file into the dummy location
+                shutil.copy2(source, dummy_full)
+            else:
+                # Generate pattern data
+                with open(dummy_full, "wb") as f:
+                    written = 0
+                    if progress_callback:
+                        progress_callback(0, extracted_mb)
+                    while written < target_bytes:
+                        remaining = target_bytes - written
+                        write_size = min(len(chunk), remaining)
+                        f.write(chunk[:write_size])
+                        written += write_size
+                        if progress_callback:
+                            progress_callback(written // (1024*1024), extracted_mb)
+
+            # Zip the folder
             try:
                 if password:
                     import pyzipper
@@ -100,8 +189,57 @@ def generate_zip(output, extracted_mb, pattern="A", compression=True, password=N
                             z.write(full_path, arcname=arcname)
                 if password:
                     print("Warning: pyzipper not installed, password ignored.")
+
+        compressed_size = os.path.getsize(output)
+        ratio = target_bytes / compressed_size if compressed_size else 0
+        return {
+            "output": output,
+            "extracted_bytes": target_bytes,
+            "compressed_bytes": compressed_size,
+            "ratio": ratio,
+            "format": fmt,
+            "algo": "deflate",
+        }
+
+    # ---- 4. Plain ZIP ----
+    # Create a ZIP archive with the source or pattern
+    if source is not None:
+        # Source is a file or folder
+        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED if compression else zipfile.ZIP_STORED) as z:
+            if os.path.isfile(source):
+                z.write(source, arcname=os.path.basename(source))
+            else:
+                # Add folder recursively
+                for root, _, files in os.walk(source):
+                    for file in files:
+                        full_path = os.path.join(root, file)
+                        arcname = os.path.relpath(full_path, os.path.dirname(source))
+                        z.write(full_path, arcname=arcname)
+        compressed_size = os.path.getsize(output)
+        ratio = target_bytes / compressed_size if compressed_size else 0
+        return {
+            "output": output,
+            "extracted_bytes": target_bytes,
+            "compressed_bytes": compressed_size,
+            "ratio": ratio,
+            "format": "zip",
+            "algo": "deflate",
+        }
     else:
-        # Plain ZIP with a single file
+        # Pattern generation
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            temp_name = tmp.name
+            written = 0
+            if progress_callback:
+                progress_callback(0, extracted_mb)
+            while written < target_bytes:
+                remaining = target_bytes - written
+                write_size = min(len(chunk), remaining)
+                tmp.write(chunk[:write_size])
+                written += write_size
+                if progress_callback:
+                    progress_callback(written // (1024*1024), extracted_mb)
+
         try:
             if password:
                 import pyzipper
@@ -122,16 +260,16 @@ def generate_zip(output, extracted_mb, pattern="A", compression=True, password=N
                 print("Warning: pyzipper not installed, password ignored.")
         os.remove(temp_name)
 
-    compressed_size = os.path.getsize(output)
-    ratio = target_bytes / compressed_size if compressed_size else 0
-    return {
-        "output": output,
-        "extracted_bytes": target_bytes,
-        "compressed_bytes": compressed_size,
-        "ratio": ratio,
-        "format": fmt,
-        "algo": "deflate",
-    }
+        compressed_size = os.path.getsize(output)
+        ratio = target_bytes / compressed_size if compressed_size else 0
+        return {
+            "output": output,
+            "extracted_bytes": target_bytes,
+            "compressed_bytes": compressed_size,
+            "ratio": ratio,
+            "format": "zip",
+            "algo": "deflate",
+        }
 
 def print_stats(stats):
     print("Created:", stats["output"])
@@ -161,6 +299,7 @@ def generate_batch(tasks, progress_callback=None):
             "legacy": False,
             "format": "zip",
             "algo": "deflate",
+            "source": None,
         }
         params.update(task)
         size = params["size"]
@@ -172,7 +311,8 @@ def generate_batch(tasks, progress_callback=None):
         if progress_callback:
             try:
                 from tqdm import tqdm
-                pbar = tqdm(total=size, unit="MB", desc=os.path.basename(params["output"]), leave=False)
+                total_bytes = get_total_size(params["source"]) if params["source"] else size * 1024 * 1024
+                pbar = tqdm(total=total_bytes, unit="B", desc=os.path.basename(params["output"]), leave=False)
                 def inner_update(current, total):
                     pbar.update(current - pbar.n)
                     if current >= total:
@@ -191,20 +331,16 @@ def generate_batch(tasks, progress_callback=None):
             legacy_crypto=params["legacy"],
             fmt=params.get("format", "zip"),
             algo=params.get("algo", "deflate"),
+            source=params.get("source"),
         )
         results.append(stats)
     return results
 
 # =============================================================================
-# Universal Extraction
+# Universal Extraction (unchanged)
 # =============================================================================
 
 def extract_archive(archive, password=None, output_dir=None):
-    """
-    Universal decompressor:
-    - .zip / .pptx / .docx / .xlsx → ZIP extraction (supports AES + legacy passwords)
-    - .xz / .lzma → LZMA decompression
-    """
     if not os.path.exists(archive):
         raise FileNotFoundError(f"Archive not found: {archive}")
 
@@ -225,6 +361,12 @@ def extract_archive(archive, password=None, output_dir=None):
         except lzma.LZMAError as e:
             raise ValueError(f"Failed to decompress XZ file (corrupt?): {e}")
 
+    # ---- .tar.xz decompression ----
+    if archive.lower().endswith(('.tar.xz', '.txz')):
+        with tarfile.open(archive, 'r:xz') as tar:
+            tar.extractall(output_dir)
+        return output_dir
+
     # ---- ZIP (and Office) decompression ----
     try:
         import pyzipper
@@ -237,17 +379,14 @@ def extract_archive(archive, password=None, output_dir=None):
             except RuntimeError as e:
                 if "Bad password" in str(e) or "invalid password" in str(e).lower():
                     raise ValueError("Incorrect password")
-                # Fallback to standard zipfile
                 raise
     except (ImportError, zipfile.BadZipFile, RuntimeError):
-        # Fallback to standard zipfile (supports ZipCrypto and unencrypted)
         with zipfile.ZipFile(archive, 'r') as z:
             if password:
                 z.setpassword(password.encode())
             z.extractall(output_dir)
             return output_dir
     except Exception as e:
-        # Last resort: try standard zipfile
         with zipfile.ZipFile(archive, 'r') as z:
             if password:
                 z.setpassword(password.encode())
@@ -255,22 +394,28 @@ def extract_archive(archive, password=None, output_dir=None):
             return output_dir
 
 # =============================================================================
-# CLI info
+# CLI info (with support for .tar.xz)
 # =============================================================================
 
 def cli_info(args):
     if not os.path.exists(args.zipfile):
         print(f"File not found: {args.zipfile}")
         return
-    # Handle XZ files
-    if args.zipfile.lower().endswith(('.xz', '.lzma')):
+    fname = args.zipfile.lower()
+    if fname.endswith(('.xz', '.lzma')):
         size = os.path.getsize(args.zipfile)
         print(f"Archive: {args.zipfile}")
         print("Type: LZMA/XZ")
         print(f"Compressed size: {format_size(size)}")
         print("(Info for XZ files is limited)")
         return
-
+    if fname.endswith(('.tar.xz', '.txz')):
+        size = os.path.getsize(args.zipfile)
+        print(f"Archive: {args.zipfile}")
+        print("Type: TAR.XZ (LZMA)")
+        print(f"Compressed size: {format_size(size)}")
+        print("(Info for TAR.XZ files is limited)")
+        return
     try:
         with zipfile.ZipFile(args.zipfile, 'r') as z:
             info = z.infolist()
