@@ -8,6 +8,7 @@ import zipfile
 from forge.core import generate_zip, generate_batch, extract_archive
 from forge.utils import format_size, parse_size_string, format_time
 from forge.config import load_config, save_config, detect_system_theme
+
 # Try to import Sun Valley theme
 try:
     import sv_ttk
@@ -201,20 +202,16 @@ def launch_gui():
     ttk.Button(tab_single, text="Browse", command=lambda: output_var.set(filedialog.asksaveasfilename(defaultextension="."+format_var.get()))).grid(row=row, column=2, padx=5, pady=5)
     row += 1
 
-    # ---- Compression checkbox ----
-    compress_var = tk.BooleanVar(value=True)
     compress_check = ttk.Checkbutton(tab_single, text="Use ZIP compression (Store vs DEFLATE)", variable=compress_var)
     compress_check.grid(row=row, column=0, columnspan=2, padx=5, pady=5, sticky="w")
     row += 1
 
-    # ---- Dynamic disable for LZMA/Zstd ----
     def on_algo_change(event):
         if algo_var.get() in ("lzma", "zstd"):
             compress_check.config(state="disabled")
             compress_var.set(True)
         else:
             compress_check.config(state="normal")
-
     algo_combo.bind("<<ComboboxSelected>>", on_algo_change)
     on_algo_change(None)
 
@@ -247,49 +244,49 @@ def launch_gui():
         if paths:
             var.set(paths[0])
 
-   def generate_single_thread():
-    gen_btn.config(state="disabled")
-    progress_single["value"] = 0
-    log_single_msg("Starting generation...")
-    try:
-        source = input_path_var.get().strip()
-        if source and os.path.exists(source):
-            log_single_msg(f"Using input: {source}")
-            size_mb = None
-        else:
-            source = None
-            size_mb = size_var.get()
-            log_single_msg(f"Generating pattern ({size_mb} MB)")
-        def upd(cur, total):
-            if total:
-                progress_single["value"] = (cur/total)*100
-            root.update_idletasks()
-        stats = generate_zip(
-            output=output_var.get(),
-            extracted_mb=size_mb,
-            pattern=pattern_var.get(),
-            compression=compress_var.get(),
-            password=password_var.get() or None,
-            progress_callback=upd,
-            legacy_crypto=legacy_var.get(),
-            fmt=format_var.get(),
-            algo=algo_var.get(),
-            source=source,
-        )
-        log_single_msg(f"Created: {stats['output']} ({stats['format'].upper()})")
-        log_single_msg(f"Algorithm: {stats['algo'].upper()}")
-        log_single_msg(f"Compressed: {format_size(stats['compressed_bytes'])}")
-        log_single_msg(f"Extracted:  {format_size(stats['extracted_bytes'])}")
-        log_single_msg(f"Ratio: {stats['ratio']:.2f}x")
-        # ----- TIME LOGGING ADDED -----
-        if "time" in stats:
-            log_single_msg(f"Time taken: {format_time(stats['time'])}")
-        # -----------------------------
-    except Exception as e:
-        log_single_msg(f"Error: {e}")
-    finally:
-        gen_btn.config(state="normal")
+    def generate_single_thread():
+        gen_btn.config(state="disabled")
         progress_single["value"] = 0
+        log_single_msg("Starting generation...")
+        try:
+            source = input_path_var.get().strip()
+            if source and os.path.exists(source):
+                log_single_msg(f"Using input: {source}")
+                size_mb = None
+            else:
+                source = None
+                size_mb = size_var.get()
+                log_single_msg(f"Generating pattern ({size_mb} MB)")
+            def upd(cur, total):
+                if total:
+                    progress_single["value"] = (cur/total)*100
+                root.update_idletasks()
+            stats = generate_zip(
+                output=output_var.get(),
+                extracted_mb=size_mb,
+                pattern=pattern_var.get(),
+                compression=compress_var.get(),
+                password=password_var.get() or None,
+                progress_callback=upd,
+                legacy_crypto=legacy_var.get(),
+                fmt=format_var.get(),
+                algo=algo_var.get(),
+                source=source,
+            )
+            log_single_msg(f"Created: {stats['output']} ({stats['format'].upper()})")
+            log_single_msg(f"Algorithm: {stats['algo'].upper()}")
+            log_single_msg(f"Compressed: {format_size(stats['compressed_bytes'])}")
+            log_single_msg(f"Extracted:  {format_size(stats['extracted_bytes'])}")
+            log_single_msg(f"Ratio: {stats['ratio']:.2f}x")
+            # ---------- TIME LOGGING ADDED ----------
+            if "time" in stats:
+                log_single_msg(f"Time taken: {format_time(stats['time'])}")
+            # ----------------------------------------
+        except Exception as e:
+            log_single_msg(f"Error: {e}")
+        finally:
+            gen_btn.config(state="normal")
+            progress_single["value"] = 0
 
     gen_btn = ttk.Button(tab_single, text="Generate", command=lambda: threading.Thread(target=generate_single_thread, daemon=True).start())
     gen_btn.grid(row=row, column=0, columnspan=3, pady=10)
@@ -359,20 +356,16 @@ def launch_gui():
     ttk.Entry(tab_batch, textvariable=batch_output_pattern_var, width=30).grid(row=br, column=1, padx=5, pady=5, sticky="ew")
     br += 1
 
-    # ---- Batch compression checkbox ----
-    batch_compress_var = tk.BooleanVar(value=True)
     batch_compress_check = ttk.Checkbutton(tab_batch, text="Use ZIP compression (Store vs DEFLATE)", variable=batch_compress_var)
     batch_compress_check.grid(row=br, column=0, columnspan=2, padx=5, pady=5, sticky="w")
     br += 1
 
-    # ---- Dynamic disable for LZMA/Zstd (Batch) ----
     def on_batch_algo_change(event):
         if batch_algo_var.get() in ("lzma", "zstd"):
             batch_compress_check.config(state="disabled")
             batch_compress_var.set(True)
         else:
             batch_compress_check.config(state="normal")
-
     batch_algo_combo.bind("<<ComboboxSelected>>", on_batch_algo_change)
     on_batch_algo_change(None)
 
@@ -398,55 +391,55 @@ def launch_gui():
         batch_log.config(state="disabled")
 
     def generate_batch_thread():
-    batch_btn.config(state="disabled")
-    batch_progress_bar["value"] = 0
-    log_batch_msg("Starting batch generation...")
-    try:
-        size_strs = [s.strip() for s in batch_sizes_var.get().split(',') if s.strip()]
-        tasks = []
-        fmt = batch_format_var.get()
-        algo = batch_algo_var.get()
-        source = batch_input_path_var.get().strip()
-        if source and not os.path.exists(source):
-            raise ValueError(f"Input source not found: {source}")
-        for s in size_strs:
-            size_mb = parse_size_string(s)
-            out_name = batch_output_pattern_var.get().replace("{size}", s).replace("{size_mb}", str(size_mb))
-            task = {
-                "size": size_mb,
-                "output": out_name,
-                "pattern": batch_pattern_var.get(),
-                "compression": batch_compress_var.get(),
-                "password": batch_password_var.get() or None,
-                "legacy": batch_legacy_var.get(),
-                "format": fmt,
-                "algo": algo,
-            }
-            if source:
-                task["source"] = source
-            tasks.append(task)
-        if not tasks:
-            log_batch_msg("No tasks defined.")
-            return
-        log_batch_msg(f"Total tasks: {len(tasks)}")
-        def batch_progress(current, total, msg):
-            batch_progress_bar["value"] = ((current+1) / total) * 100
-            root.update_idletasks()
-            log_batch_msg(f"[{current+1}/{total}] {msg}")
-        results = generate_batch(tasks, progress_callback=batch_progress)
-        log_batch_msg("\n=== Summary ===")
-        # ---------- REPLACE THIS LOOP ----------
-       for r in results:
-        msg = f"{os.path.basename(r['output'])} ({r['format'].upper()}, {r['algo'].upper()}): {format_size(r['extracted_bytes'])} → {format_size(r['compressed_bytes'])} (ratio {r['ratio']:.2f}x)"
-        if "time" in r:
-            msg += f" | Time: {format_time(r['time'])}"
-        log_batch_msg(msg)
-        # ----------------------------------------
-    except Exception as e:
-        log_batch_msg(f"Error: {e}")
-    finally:
-        batch_btn.config(state="normal")
+        batch_btn.config(state="disabled")
         batch_progress_bar["value"] = 0
+        log_batch_msg("Starting batch generation...")
+        try:
+            size_strs = [s.strip() for s in batch_sizes_var.get().split(',') if s.strip()]
+            tasks = []
+            fmt = batch_format_var.get()
+            algo = batch_algo_var.get()
+            source = batch_input_path_var.get().strip()
+            if source and not os.path.exists(source):
+                raise ValueError(f"Input source not found: {source}")
+            for s in size_strs:
+                size_mb = parse_size_string(s)
+                out_name = batch_output_pattern_var.get().replace("{size}", s).replace("{size_mb}", str(size_mb))
+                task = {
+                    "size": size_mb,
+                    "output": out_name,
+                    "pattern": batch_pattern_var.get(),
+                    "compression": batch_compress_var.get(),
+                    "password": batch_password_var.get() or None,
+                    "legacy": batch_legacy_var.get(),
+                    "format": fmt,
+                    "algo": algo,
+                }
+                if source:
+                    task["source"] = source
+                tasks.append(task)
+            if not tasks:
+                log_batch_msg("No tasks defined.")
+                return
+            log_batch_msg(f"Total tasks: {len(tasks)}")
+            def batch_progress(current, total, msg):
+                batch_progress_bar["value"] = ((current+1) / total) * 100
+                root.update_idletasks()
+                log_batch_msg(f"[{current+1}/{total}] {msg}")
+            results = generate_batch(tasks, progress_callback=batch_progress)
+            log_batch_msg("\n=== Summary ===")
+            # ---------- UPDATED LOOP WITH TIME ----------
+            for r in results:
+                msg = f"{os.path.basename(r['output'])} ({r['format'].upper()}, {r['algo'].upper()}): {format_size(r['extracted_bytes'])} → {format_size(r['compressed_bytes'])} (ratio {r['ratio']:.2f}x)"
+                if "time" in r:
+                    msg += f" | Time: {format_time(r['time'])}"
+                log_batch_msg(msg)
+            # -------------------------------------------
+        except Exception as e:
+            log_batch_msg(f"Error: {e}")
+        finally:
+            batch_btn.config(state="normal")
+            batch_progress_bar["value"] = 0
 
     batch_btn = ttk.Button(tab_batch, text="Generate Batch", command=lambda: threading.Thread(target=generate_batch_thread, daemon=True).start())
     batch_btn.grid(row=br, column=0, columnspan=2, pady=10)
@@ -491,9 +484,9 @@ def launch_gui():
         archive = filedialog.askopenfilename(title="Select archive", filetypes=[("All archives", "*.zip *.pptx *.docx *.xlsx *.xz *.lzma *.tar.xz *.txz *.zst *.zstd *.tar.zst *.tzst")])
         if not archive: return
         try:
-            if archive.lower().endswith(('.xz', '.lzma', '.tar.xz', '.txz', '.zst', '.zstd', '.tar.zst', '.tzst')):
+            if archive.lower().endswith(('.xz', '.lzma', '.zst', '.zstd', '.tar.xz', '.txz', '.tar.zst', '.tzst')):
                 size = os.path.getsize(archive)
-                msg = f"Archive: {os.path.basename(archive)}\nType: LZMA or Zstandard\nCompressed size: {format_size(size)}\n(Detailed info not available)"
+                msg = f"Archive: {os.path.basename(archive)}\nType: LZMA or Zstd\nCompressed size: {format_size(size)}"
                 messagebox.showinfo("Archive Info", msg)
                 return
 
