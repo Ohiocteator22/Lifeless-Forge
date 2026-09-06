@@ -40,14 +40,14 @@ def get_progress_printer(enable=False, total=None, label="Writing"):
             if current >= total:
                 print(f"{label}: 100%")
         return update
-        # forge/utils.py – add this at the end
 
-        def format_time(seconds):
-            """Convert seconds to human-readable string."""
-            if seconds < 60:
-                return f"{seconds:.2f} seconds"
-            mins, secs = divmod(int(seconds), 60)
-            if mins < 60:
-                return f"{mins}m {secs}s"
-            hrs, mins = divmod(mins, 60)
-            return f"{hrs}h {mins}m {secs}s"
+# ---------- NEW: Time formatter ----------
+def format_time(seconds):
+    """Convert seconds to human-readable string."""
+    if seconds < 60:
+        return f"{seconds:.2f} seconds"
+    mins, secs = divmod(int(seconds), 60)
+    if mins < 60:
+        return f"{mins}m {secs}s"
+    hrs, mins = divmod(mins, 60)
+    return f"{hrs}h {mins}m {secs}s"
