@@ -9,6 +9,8 @@ import tarfile
 from pathlib import Path
 from forge.utils import format_size, parse_size_string, get_progress_printer
 from forge.templates import create_pptx_template, create_docx_template, create_xlsx_template
+import time   
+start_time = time.time()
 
 # Try to import zstandard
 try:
