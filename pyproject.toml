@@ -14,7 +14,10 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-dependencies = ["tkinterdnd2>=0.3.0",]
+dependencies = [
+     "sv-ttk>=2.6.0",
+    "tkinterdnd2>=0.3.0",
+    ]
 [project.optional-dependencies]
 encryption = ["pyzipper>=0.3.6"]
 progress = ["tqdm>=4.66.0"]
