@@ -19,6 +19,13 @@ except ImportError:
     HAS_ZSTD = False
     zstd = None
 
+# Try to import pyzipper
+try:
+    import pyzipper
+    HAS_PYZIPPER = True
+except ImportError:
+    HAS_PYZIPPER = False
+
 # =============================================================================
 # Helper: Get total size of a file/folder
 # =============================================================================
@@ -33,13 +40,28 @@ def get_total_size(path):
     return total
 
 # =============================================================================
+# Helper: Check if a file is a tar archive
+# =============================================================================
+
+def is_tar_file(filepath):
+    """Check if the file is a tar archive by looking at magic bytes."""
+    try:
+        with open(filepath, 'rb') as f:
+            # Tar magic is at offset 257: "ustar" (or "ustar\0") or "tar\0"
+            f.seek(257)
+            magic = f.read(6)
+            return magic in (b'ustar\0', b'ustar ', b'tar\0')
+    except:
+        return False
+
+# =============================================================================
 # Generation
 # =============================================================================
 
 def generate_zip(output, extracted_mb=None, pattern="A", compression=True, password=None,
                  progress_callback=None, legacy_crypto=False, fmt="zip", algo="deflate",
                  source=None):
-    start_time = time.time()  # <-- Start timer
+    start_time = time.time()
 
     if source is not None:
         if not os.path.exists(source):
@@ -227,7 +249,7 @@ def generate_zip(output, extracted_mb=None, pattern="A", compression=True, passw
             "format": "zip", "algo": "deflate", "time": elapsed}
 
 # =============================================================================
-# Stats Printer (updated with divider & time)
+# Stats Printer
 # =============================================================================
 
 def print_stats(stats):
@@ -242,7 +264,7 @@ def print_stats(stats):
         print("Time taken:", format_time(stats["time"]))
 
 # =============================================================================
-# Batch generation (unchanged, but each call gets its own time)
+# Batch generation
 # =============================================================================
 
 def generate_batch(tasks, progress_callback=None):
@@ -267,14 +289,13 @@ def generate_batch(tasks, progress_callback=None):
         if isinstance(params["size"], str):
             params["size"] = parse_size_string(params["size"])
 
-        # Each batch item also gets timed (inside generate_zip)
         stats = generate_zip(
             output=params["output"],
             extracted_mb=params["size"],
             pattern=params["pattern"],
             compression=params["compression"],
             password=params["password"],
-            progress_callback=None,  # could be improved with per‑task progress
+            progress_callback=None,
             legacy_crypto=params["legacy"],
             fmt=params.get("format", "zip"),
             algo=params.get("algo", "deflate"),
@@ -284,7 +305,7 @@ def generate_batch(tasks, progress_callback=None):
     return results
 
 # =============================================================================
-# Extraction (time added in cli_extract, but we'll also add optional timing)
+# Universal Extraction (improved with tar detection)
 # =============================================================================
 
 def extract_archive(archive, password=None, output_dir=None):
@@ -294,52 +315,92 @@ def extract_archive(archive, password=None, output_dir=None):
         output_dir = os.path.splitext(archive)[0] + "_extracted"
     os.makedirs(output_dir, exist_ok=True)
 
-    # ---- XZ ----
-    if archive.lower().endswith(('.xz', '.lzma')):
-        try:
-            with lzma.open(archive, 'rb') as f_in:
-                base = os.path.basename(archive)
-                base = os.path.splitext(base)[0] + ".bin"
-                out_path = os.path.join(output_dir, base)
-                with open(out_path, 'wb') as f_out:
-                    shutil.copyfileobj(f_in, f_out)
-            return output_dir
-        except lzma.LZMAError as e:
-            raise ValueError(f"Failed to decompress XZ: {e}")
+    # ---- Plain .tar ----
+    if archive.lower().endswith('.tar'):
+        with tarfile.open(archive, 'r') as tar:
+            tar.extractall(output_dir)
+        return output_dir
+
+    # ---- .tar.xz / .txz ----
     if archive.lower().endswith(('.tar.xz', '.txz')):
         with tarfile.open(archive, 'r:xz') as tar:
             tar.extractall(output_dir)
         return output_dir
 
-    # ---- Zstd ----
+    # ---- .tar.zst / .tzst ----
+    if archive.lower().endswith(('.tar.zst', '.tzst')):
+        if not HAS_ZSTD:
+            raise ImportError("zstandard not installed.")
+        # Decompress to temp tar, then extract
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.tar') as tmp:
+            temp_tar = tmp.name
+        try:
+            with open(archive, "rb") as f_in:
+                with open(temp_tar, "wb") as f_out:
+                    decompressor = zstd.ZstdDecompressor()
+                    f_out.write(decompressor.decompress(f_in.read()))
+            with tarfile.open(temp_tar, "r") as tar:
+                tar.extractall(output_dir)
+            return output_dir
+        finally:
+            if os.path.exists(temp_tar):
+                os.remove(temp_tar)
+
+    # ---- .xz / .lzma (might be tar) ----
+    if archive.lower().endswith(('.xz', '.lzma')):
+        # Decompress to a temporary file first
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            temp_out = tmp.name
+        try:
+            with lzma.open(archive, 'rb') as f_in:
+                with open(temp_out, 'wb') as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+            # Check if it's a tar archive
+            if is_tar_file(temp_out):
+                with tarfile.open(temp_out, 'r') as tar:
+                    tar.extractall(output_dir)
+                return output_dir
+            else:
+                # Not tar – copy as a single file
+                base = os.path.basename(archive)
+                base = os.path.splitext(base)[0] + ".bin"
+                out_path = os.path.join(output_dir, base)
+                shutil.move(temp_out, out_path)
+                return output_dir
+        except lzma.LZMAError as e:
+            raise ValueError(f"Failed to decompress XZ: {e}")
+        finally:
+            if os.path.exists(temp_out):
+                os.remove(temp_out)
+
+    # ---- .zst / .zstd (might be tar) ----
     if archive.lower().endswith(('.zst', '.zstd')):
         if not HAS_ZSTD:
             raise ImportError("zstandard not installed.")
-        if archive.lower().endswith(('.tar.zst', '.tzst')):
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.tar') as tmp:
-                temp_tar = tmp.name
-            try:
-                with open(archive, "rb") as f_in:
-                    with open(temp_tar, "wb") as f_out:
-                        decompressor = zstd.ZstdDecompressor()
-                        f_out.write(decompressor.decompress(f_in.read()))
-                with tarfile.open(temp_tar, "r") as tar:
-                    tar.extractall(output_dir)
-                return output_dir
-            finally:
-                if os.path.exists(temp_tar):
-                    os.remove(temp_tar)
-        else:
-            base = os.path.basename(archive)
-            base = os.path.splitext(base)[0] + ".bin"
-            out_path = os.path.join(output_dir, base)
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            temp_out = tmp.name
+        try:
             with open(archive, "rb") as f_in:
-                with open(out_path, "wb") as f_out:
+                with open(temp_out, "wb") as f_out:
                     decompressor = zstd.ZstdDecompressor()
                     f_out.write(decompressor.decompress(f_in.read()))
-            return output_dir
+            if is_tar_file(temp_out):
+                with tarfile.open(temp_out, 'r') as tar:
+                    tar.extractall(output_dir)
+                return output_dir
+            else:
+                base = os.path.basename(archive)
+                base = os.path.splitext(base)[0] + ".bin"
+                out_path = os.path.join(output_dir, base)
+                shutil.move(temp_out, out_path)
+                return output_dir
+        except Exception as e:
+            raise ValueError(f"Failed to decompress Zstd: {e}")
+        finally:
+            if os.path.exists(temp_out):
+                os.remove(temp_out)
 
-    # ---- ZIP ----
+    # ---- ZIP / Office (with password support) ----
     try:
         if HAS_PYZIPPER:
             with pyzipper.AESZipFile(archive, 'r') as z:
@@ -349,7 +410,7 @@ def extract_archive(archive, password=None, output_dir=None):
                 return output_dir
     except:
         pass
-    # Fallback
+    # Fallback to standard zipfile
     with zipfile.ZipFile(archive, 'r') as z:
         if password:
             z.setpassword(password.encode())
