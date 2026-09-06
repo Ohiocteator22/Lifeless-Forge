@@ -5,7 +5,7 @@ password protection, batch generation, and Office formats.
 """
 
 
-__version__ = "1.2.0"
+__version__ = "1.1.6"
 __author__ = "Lifeless"
 from .core import generate_zip, generate_batch, extract_archive
 from .utils import format_size, parse_size_string
