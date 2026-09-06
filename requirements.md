@@ -4,7 +4,7 @@ pyzipper>=0.3.6
 tqdm>=4.66.0
 zstandard>=0.22.0
 ---------------------------PIP INSTALL--------------------------------
-```
+```bash
   pip install sv-ttk
   pip install tkinterdnd2
   pip install pyzipper
