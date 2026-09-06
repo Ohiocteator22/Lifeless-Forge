@@ -3,8 +3,8 @@ import argparse
 import sys
 import json
 import os
-from .core import generate_zip, generate_batch, extract_archive, cli_info as core_info, print_stats
-from .utils import format_size, parse_size_string, get_progress_printer
+from forge.core import generate_zip, generate_batch, extract_archive, print_stats, cli_info as core_info
+from forge.utils import format_size, parse_size_string, get_progress_printer
 
 def cli_generate(args):
     progress = get_progress_printer(enable=not args.no_progress, total=args.size)
