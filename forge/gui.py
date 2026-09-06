@@ -44,17 +44,19 @@ def get_colors(dark_mode):
             "selectbg": "#cce8ff",
         }
 
-def apply_custom_colors(widget, colors):
-    """Apply colors to standard Tk widgets (Text, Entry, etc.)"""
-    if isinstance(widget, (tk.Text, tk.Entry, tk.Listbox, tk.Canvas)):
-        widget.config(
-            bg=colors["textbg"],
-            fg=colors["textfg"],
-            insertbackground=colors["fg"],
-            selectbackground=colors["selectbg"],
-        )
-    for child in widget.winfo_children():
-        apply_custom_colors(child, colors)
+def apply_custom_colors(root_widget, colors):
+    """Iteratively apply colors to all standard Tk widgets in the hierarchy."""
+    stack = [root_widget]
+    while stack:
+        widget = stack.pop()
+        if isinstance(widget, (tk.Text, tk.Entry, tk.Listbox, tk.Canvas)):
+            widget.config(
+                bg=colors["textbg"],
+                fg=colors["textfg"],
+                insertbackground=colors["fg"],
+                selectbackground=colors["selectbg"],
+            )
+        stack.extend(widget.winfo_children())
 
 def launch_gui():
     # ----- Load config and determine initial theme -----
@@ -121,7 +123,6 @@ def launch_gui():
             # Fallback: manual theme switching
             style = ttk.Style()
             style.theme_use('clam')
-            # You'd need to manually set colors here – but sv_ttk is the way
 
         # Update custom colors
         colors = get_colors(dark_mode)
@@ -132,7 +133,7 @@ def launch_gui():
         config["dark_mode"] = dark_mode
         save_config(config)
 
-    # ---- Build the UI (same as before, but cleaner) ----
+    # ---- Build the UI (same as before) ----
     nb = ttk.Notebook(root)
     nb.pack(fill="both", expand=True, padx=5, pady=5)
 
