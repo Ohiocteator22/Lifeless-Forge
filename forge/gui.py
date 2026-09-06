@@ -6,7 +6,7 @@ from tkinter import ttk, filedialog, messagebox, simpledialog
 import os
 import zipfile
 from forge.core import generate_zip, generate_batch, extract_archive
-from forge.utils import format_size, parse_size_string
+from forge.utils import format_size, parse_size_string, format_time
 from forge.config import load_config, save_config, detect_system_theme
 # Try to import Sun Valley theme
 try:
