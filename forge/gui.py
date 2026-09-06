@@ -9,7 +9,14 @@ from .core import generate_zip, generate_batch, extract_archive
 from .utils import format_size, parse_size_string
 from .config import load_config, save_config, detect_system_theme
 
-# Try to import tkinterdnd2 – fallback if not available
+# Try to import Sun Valley theme
+try:
+    import sv_ttk
+    HAS_SV_TTK = True
+except ImportError:
+    HAS_SV_TTK = False
+
+# Try to import tkinterdnd2
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
     HAS_DND = True
@@ -18,56 +25,49 @@ except ImportError:
     TkinterDnD = None
     DND_FILES = None
 
-# ---------- Theme colors ----------
-LIGHT = {
-    "bg": "#f0f0f0",
-    "fg": "#000000",
-    "selectbg": "#cce8ff",
-    "textbg": "#ffffff",
-    "textfg": "#000000",
-    "button": "#e0e0e0",
-    "active": "#d0d0d0",
-}
-DARK = {
-    "bg": "#2b2b2b",
-    "fg": "#f0f0f0",
-    "selectbg": "#3a3a3a",
-    "textbg": "#3a3a3a",
-    "textfg": "#f0f0f0",
-    "button": "#3a3a3a",
-    "active": "#4a4a4a",
-}
+# ---------- Custom colors for non-ttk widgets ----------
+def get_colors(dark_mode):
+    if dark_mode:
+        return {
+            "bg": "#1c1c1c",
+            "fg": "#f0f0f0",
+            "textbg": "#2d2d2d",
+            "textfg": "#f0f0f0",
+            "selectbg": "#3a3a3a",
+        }
+    else:
+        return {
+            "bg": "#f0f0f0",
+            "fg": "#000000",
+            "textbg": "#ffffff",
+            "textfg": "#000000",
+            "selectbg": "#cce8ff",
+        }
 
-def apply_theme(widget, theme_colors):
-    """Apply colors to ttk widgets and standard Tk widgets."""
-    style = ttk.Style()
-    style.theme_use('clam')
-    style.configure('.', background=theme_colors["bg"], foreground=theme_colors["fg"],
-                    selectbackground=theme_colors["selectbg"], fieldbackground=theme_colors["textbg"])
-    style.map('TButton', background=[('active', theme_colors["active"])])
-    style.map('TCombobox', background=[('active', theme_colors["active"])])
-    style.configure('TLabel', background=theme_colors["bg"], foreground=theme_colors["fg"])
-    style.configure('TFrame', background=theme_colors["bg"])
-    style.configure('TNotebook', background=theme_colors["bg"])
-    style.configure('TNotebook.Tab', background=theme_colors["button"])
-    style.map('TNotebook.Tab', background=[('selected', theme_colors["selectbg"])])
-    # Update root and other widgets
-    widget.configure(bg=theme_colors["bg"])
-    # For Text widgets, we'll set them individually in the loop later
+def apply_custom_colors(widget, colors):
+    """Apply colors to standard Tk widgets (Text, Entry, etc.)"""
+    if isinstance(widget, (tk.Text, tk.Entry, tk.Listbox, tk.Canvas)):
+        widget.config(
+            bg=colors["textbg"],
+            fg=colors["textfg"],
+            insertbackground=colors["fg"],
+            selectbackground=colors["selectbg"],
+        )
+    for child in widget.winfo_children():
+        apply_custom_colors(child, colors)
 
 def launch_gui():
     # ----- Load config and determine initial theme -----
     config = load_config()
-    dark_mode_pref = config.get("dark_mode", None)  # None = auto
+    dark_mode_pref = config.get("dark_mode", None)
     if dark_mode_pref is None:
-        # Auto-detect
         dark_mode = detect_system_theme()
         if dark_mode is None:
-            dark_mode = False  # fallback to light
+            dark_mode = False
     else:
         dark_mode = dark_mode_pref
 
-    # Create root window with DnD support if available
+    # ----- Create root window -----
     if HAS_DND:
         root = TkinterDnD.Tk()
     else:
@@ -84,45 +84,55 @@ def launch_gui():
     # ---- Menu bar ----
     menubar = tk.Menu(root)
     view_menu = tk.Menu(menubar, tearoff=0)
-    view_menu.add_checkbutton(label="Dark Mode", variable=tk.BooleanVar(value=dark_mode),
+
+    dark_mode_var = tk.BooleanVar(value=dark_mode)
+    view_menu.add_checkbutton(label="Dark Mode", variable=dark_mode_var,
                               command=lambda: toggle_dark_mode())
     menubar.add_cascade(label="View", menu=view_menu)
     root.config(menu=menubar)
 
-    # ---- Style ----
-    style = ttk.Style()
-    style.theme_use('clam')
+    # ---- Apply Sun Valley theme ----
+    if HAS_SV_TTK:
+        if dark_mode:
+            sv_ttk.set_theme("dark")
+        else:
+            sv_ttk.set_theme("light")
+    else:
+        # Fallback: use clam with custom colors
+        style = ttk.Style()
+        style.theme_use('clam')
 
-    # ---- Apply initial theme ----
-    current_theme_colors = DARK if dark_mode else LIGHT
-    apply_theme(root, current_theme_colors)
+    # ---- Custom colors for standard widgets ----
+    colors = get_colors(dark_mode)
+    root.configure(bg=colors["bg"])
 
     # ---- Function to toggle dark mode ----
     def toggle_dark_mode():
         nonlocal dark_mode
         dark_mode = not dark_mode
-        # Update menu check
-        view_menu.entryconfig(0, variable=tk.BooleanVar(value=dark_mode))
-        # Update style
-        colors = DARK if dark_mode else LIGHT
-        apply_theme(root, colors)
-        # Update all text widgets
-        for child in root.winfo_children():
-            update_text_widgets(child, colors)
+        dark_mode_var.set(dark_mode)
+
+        if HAS_SV_TTK:
+            if dark_mode:
+                sv_ttk.set_theme("dark")
+            else:
+                sv_ttk.set_theme("light")
+        else:
+            # Fallback: manual theme switching
+            style = ttk.Style()
+            style.theme_use('clam')
+            # You'd need to manually set colors here – but sv_ttk is the way
+
+        # Update custom colors
+        colors = get_colors(dark_mode)
+        root.configure(bg=colors["bg"])
+        apply_custom_colors(root, colors)
+
         # Save preference
         config["dark_mode"] = dark_mode
         save_config(config)
 
-    def update_text_widgets(widget, colors):
-        if isinstance(widget, tk.Text):
-            widget.config(bg=colors["textbg"], fg=colors["textfg"],
-                          insertbackground=colors["fg"])
-        for child in widget.winfo_children():
-            update_text_widgets(child, colors)
-
-    # We'll call update_text_widgets after everything is created
-
-    # ---- Build the UI ----
+    # ---- Build the UI (same as before, but cleaner) ----
     nb = ttk.Notebook(root)
     nb.pack(fill="both", expand=True, padx=5, pady=5)
 
@@ -468,8 +478,8 @@ def launch_gui():
     ttk.Button(tab_extra, text="Extract Archive", command=do_extract).pack(pady=10)
     ttk.Button(tab_extra, text="Show Info", command=do_info).pack(pady=10)
 
-    # ---- After building all widgets, apply theme to text widgets ----
-    update_text_widgets(root, current_theme_colors)
+    # ---- Apply custom colors to standard widgets ----
+    apply_custom_colors(root, get_colors(dark_mode))
 
     root.mainloop()
 
