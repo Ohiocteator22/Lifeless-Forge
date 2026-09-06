@@ -3,10 +3,12 @@ import argparse
 import sys
 import json
 import os
+import tempfile
+import shutil
+import time
 from forge.core import generate_zip, generate_batch, extract_archive, print_stats, cli_info as core_info
-from forge.utils import format_size, parse_size_string, get_progress_printer
+from forge.utils import format_size, parse_size_string, get_progress_printer, format_time
 
-__all__ = ['setup_cli_parser', 'cli_generate', 'cli_batch', 'cli_extract']
 def cli_generate(args):
     progress = get_progress_printer(enable=not args.no_progress, total=args.size)
     stats = generate_zip(
@@ -98,12 +100,63 @@ def cli_batch(args):
         print(f"{os.path.basename(r['output'])} ({r['format'].upper()}, {r['algo'].upper()}): {format_size(r['extracted_bytes'])} → {format_size(r['compressed_bytes'])} (ratio {r['ratio']:.2f}x)")
 
 def cli_extract(args):
+    start = time.time()
     try:
         out_dir = extract_archive(args.archive, args.password, args.output_dir)
+        elapsed = time.time() - start
         print(f"Extracted to: {out_dir}")
+        print("-" * 40)
+        print(f"Time taken: {format_time(elapsed)}")
     except Exception as e:
         print(f"Error: {e}")
         sys.exit(1)
+
+def cli_compress(args):
+    sources = args.input
+    output = args.output
+
+    # If only one source and it's a folder, use it directly
+    if len(sources) == 1 and os.path.isdir(sources[0]):
+        source = sources[0]
+        stats = generate_zip(
+            output=output,
+            extracted_mb=None,
+            pattern="",
+            compression=not args.store,
+            password=args.password,
+            progress_callback=None,
+            legacy_crypto=args.legacy,
+            fmt="zip",  # not important for folder with algo
+            algo=args.algo,
+            source=source,
+        )
+        print_stats(stats)
+        return
+
+    # Multiple sources: create a temp dir and copy everything
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for src in sources:
+            if not os.path.exists(src):
+                print(f"Warning: {src} not found, skipping.")
+                continue
+            dest = os.path.join(tmpdir, os.path.basename(src))
+            if os.path.isdir(src):
+                shutil.copytree(src, dest)
+            else:
+                shutil.copy2(src, dest)
+        stats = generate_zip(
+            output=output,
+            extracted_mb=None,
+            pattern="",
+            compression=not args.store,
+            password=args.password,
+            progress_callback=None,
+            legacy_crypto=args.legacy,
+            fmt="zip",
+            algo=args.algo,
+            source=tmpdir,
+        )
+        print_stats(stats)
 
 def setup_cli_parser():
     parser = argparse.ArgumentParser(
@@ -112,8 +165,8 @@ def setup_cli_parser():
     )
     subparsers = parser.add_subparsers(dest="command", required=True, help="Command to execute")
 
-    # Generate subcommand
-    gen = subparsers.add_parser("generate", help="Generate a single archive")
+    # Generate
+    gen = subparsers.add_parser("generate", help="Generate a single archive (pattern or single input)")
     gen.add_argument("-s", "--size", type=int, default=60,
                      help="Extracted size in MB (ignored if --input is used)")
     gen.add_argument("-i", "--input", help="Input file or folder to compress (overrides pattern)")
@@ -134,7 +187,7 @@ def setup_cli_parser():
                      help="Disable progress bar")
     gen.set_defaults(func=cli_generate)
 
-    # Batch subcommand
+    # Batch
     batch = subparsers.add_parser("batch", help="Generate multiple archives")
     batch.add_argument("--series", help="Comma-separated sizes (e.g., '10, 50, 1GB')")
     batch.add_argument("--batch-config", help="JSON file with a list of task objects")
@@ -154,16 +207,33 @@ def setup_cli_parser():
                        help="Use legacy ZipCrypto (Windows native) for all tasks")
     batch.set_defaults(func=cli_batch)
 
-    # Extract subcommand
+    # Extract
     ext = subparsers.add_parser("extract", help="Extract an archive")
     ext.add_argument("archive", help="Path to the archive to extract")
     ext.add_argument("-p", "--password", help="Password if the archive is encrypted (ZIP/Office)")
     ext.add_argument("-o", "--output-dir", help="Directory to extract to (default: <archive_name>_extracted)")
     ext.set_defaults(func=cli_extract)
 
-    # Info subcommand
+    # Info
     info = subparsers.add_parser("info", help="Show archive statistics")
     info.add_argument("zipfile", help="Path to the archive")
     info.set_defaults(func=core_info)
+
+    # Compress (context menu)
+    comp = subparsers.add_parser("compress", help="Compress multiple files/folders into a single archive")
+    comp.add_argument("-i", "--input", nargs="+", required=True,
+                      help="Input files/folders (can specify multiple)")
+    comp.add_argument("-o", "--output", required=True,
+                      help="Output archive filename (extension determines format)")
+    comp.add_argument("--algo", choices=["deflate", "lzma", "zstd"], default="deflate",
+                      help="Compression algorithm")
+    comp.add_argument("--store", action="store_true",
+                      help="Store without compression (ZIP only)")
+    comp.add_argument("--password", help="Encryption password (ZIP only)")
+    comp.add_argument("--legacy", action="store_true",
+                      help="Use legacy ZipCrypto (ZIP only)")
+    comp.add_argument("--no-progress", action="store_true",
+                      help="Disable progress bar")
+    comp.set_defaults(func=cli_compress)
 
     return parser
