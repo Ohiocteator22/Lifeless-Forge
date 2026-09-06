@@ -47,7 +47,6 @@ def is_tar_file(filepath):
     """Check if the file is a tar archive by looking at magic bytes."""
     try:
         with open(filepath, 'rb') as f:
-            # Tar magic is at offset 257: "ustar" (or "ustar\0") or "tar\0"
             f.seek(257)
             magic = f.read(6)
             return magic in (b'ustar\0', b'ustar ', b'tar\0')
@@ -133,6 +132,15 @@ def generate_zip(output, extracted_mb=None, pattern="A", compression=True, passw
                  progress_callback=None, legacy_crypto=False, fmt="zip", algo="deflate",
                  source=None):
     start_time = time.time()
+
+    # ----- Encryption validation -----
+    if password is not None:
+        if algo in ("lzma", "zstd"):
+            raise ValueError("Encryption is not supported for LZMA or Zstandard compression.")
+        if not HAS_PYZIPPER:
+            raise ImportError(
+                "pyzipper is required for encryption. Please install: pip install pyzipper"
+            )
 
     if source is not None:
         if not os.path.exists(source):
@@ -246,26 +254,20 @@ def generate_zip(output, extracted_mb=None, pattern="A", compression=True, passw
                 shutil.copy2(source, dummy_full)
             else:
                 shutil.move(temp_name, dummy_full)
-            try:
-                if password and HAS_PYZIPPER:
-                    encrypt_method = pyzipper.WZ_AES if not legacy_crypto else pyzipper.WZ_ZIP
-                    mode = zipfile.ZIP_DEFLATED if compression else zipfile.ZIP_STORED
-                    with pyzipper.AESZipFile(output, "w", compression=mode, encryption=encrypt_method) as z:
-                        z.setpassword(password.encode())
-                        for root, _, files in os.walk(tmpdir):
-                            for file in files:
-                                full_path = os.path.join(root, file)
-                                arcname = os.path.relpath(full_path, tmpdir)
-                                z.write(full_path, arcname=arcname)
-                else:
-                    compress_type = zipfile.ZIP_DEFLATED if compression else zipfile.ZIP_STORED
-                    with zipfile.ZipFile(output, "w", compression=compress_type) as z:
-                        for root, _, files in os.walk(tmpdir):
-                            for file in files:
-                                full_path = os.path.join(root, file)
-                                arcname = os.path.relpath(full_path, tmpdir)
-                                z.write(full_path, arcname=arcname)
-            except ImportError:
+
+            # ----- Encryption for Office (ZIP) -----
+            if password is not None:
+                # password is already validated, HAS_PYZIPPER is True
+                encrypt_method = pyzipper.WZ_AES if not legacy_crypto else pyzipper.WZ_ZIP
+                mode = zipfile.ZIP_DEFLATED if compression else zipfile.ZIP_STORED
+                with pyzipper.AESZipFile(output, "w", compression=mode, encryption=encrypt_method) as z:
+                    z.setpassword(password.encode())
+                    for root, _, files in os.walk(tmpdir):
+                        for file in files:
+                            full_path = os.path.join(root, file)
+                            arcname = os.path.relpath(full_path, tmpdir)
+                            z.write(full_path, arcname=arcname)
+            else:
                 compress_type = zipfile.ZIP_DEFLATED if compression else zipfile.ZIP_STORED
                 with zipfile.ZipFile(output, "w", compression=compress_type) as z:
                     for root, _, files in os.walk(tmpdir):
@@ -273,8 +275,7 @@ def generate_zip(output, extracted_mb=None, pattern="A", compression=True, passw
                             full_path = os.path.join(root, file)
                             arcname = os.path.relpath(full_path, tmpdir)
                             z.write(full_path, arcname=arcname)
-                if password:
-                    print("Warning: pyzipper not installed, password ignored.")
+
         compressed_size = os.path.getsize(output)
         ratio = target_bytes / compressed_size if compressed_size else 0
         elapsed = time.time() - start_time
@@ -284,34 +285,45 @@ def generate_zip(output, extracted_mb=None, pattern="A", compression=True, passw
 
     # ---- Plain ZIP ----
     if source is not None:
-        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED if compression else zipfile.ZIP_STORED) as z:
-            if os.path.isfile(source):
-                z.write(source, arcname=os.path.basename(source))
-            else:
-                for root, _, files in os.walk(source):
-                    for file in files:
-                        full_path = os.path.join(root, file)
-                        arcname = os.path.relpath(full_path, os.path.dirname(source))
-                        z.write(full_path, arcname=arcname)
+        # ----- Encryption for plain ZIP with source -----
+        if password is not None:
+            encrypt_method = pyzipper.WZ_AES if not legacy_crypto else pyzipper.WZ_ZIP
+            mode = zipfile.ZIP_DEFLATED if compression else zipfile.ZIP_STORED
+            with pyzipper.AESZipFile(output, "w", compression=mode, encryption=encrypt_method) as z:
+                z.setpassword(password.encode())
+                if os.path.isfile(source):
+                    z.write(source, arcname=os.path.basename(source))
+                else:
+                    for root, _, files in os.walk(source):
+                        for file in files:
+                            full_path = os.path.join(root, file)
+                            arcname = os.path.relpath(full_path, os.path.dirname(source))
+                            z.write(full_path, arcname=arcname)
+        else:
+            compress_type = zipfile.ZIP_DEFLATED if compression else zipfile.ZIP_STORED
+            with zipfile.ZipFile(output, "w", compression=compress_type) as z:
+                if os.path.isfile(source):
+                    z.write(source, arcname=os.path.basename(source))
+                else:
+                    for root, _, files in os.walk(source):
+                        for file in files:
+                            full_path = os.path.join(root, file)
+                            arcname = os.path.relpath(full_path, os.path.dirname(source))
+                            z.write(full_path, arcname=arcname)
     else:
-        try:
-            if password and HAS_PYZIPPER:
-                encrypt_method = pyzipper.WZ_AES if not legacy_crypto else pyzipper.WZ_ZIP
-                mode = zipfile.ZIP_DEFLATED if compression else zipfile.ZIP_STORED
-                with pyzipper.AESZipFile(output, "w", compression=mode, encryption=encrypt_method) as z:
-                    z.setpassword(password.encode())
-                    z.write(temp_name, arcname="compression_test_data.bin")
-            else:
-                compress_type = zipfile.ZIP_DEFLATED if compression else zipfile.ZIP_STORED
-                with zipfile.ZipFile(output, "w", compression=compress_type) as z:
-                    z.write(temp_name, arcname="compression_test_data.bin")
-        except ImportError:
+        # ---- generated data (no source) ----
+        if password is not None:
+            encrypt_method = pyzipper.WZ_AES if not legacy_crypto else pyzipper.WZ_ZIP
+            mode = zipfile.ZIP_DEFLATED if compression else zipfile.ZIP_STORED
+            with pyzipper.AESZipFile(output, "w", compression=mode, encryption=encrypt_method) as z:
+                z.setpassword(password.encode())
+                z.write(temp_name, arcname="compression_test_data.bin")
+        else:
             compress_type = zipfile.ZIP_DEFLATED if compression else zipfile.ZIP_STORED
             with zipfile.ZipFile(output, "w", compression=compress_type) as z:
                 z.write(temp_name, arcname="compression_test_data.bin")
-            if password:
-                print("Warning: pyzipper not installed, password ignored.")
         os.remove(temp_name)
+
     compressed_size = os.path.getsize(output)
     ratio = target_bytes / compressed_size if compressed_size else 0
     elapsed = time.time() - start_time
@@ -475,14 +487,20 @@ def extract_archive(archive, password=None, output_dir=None):
                     z.setpassword(password.encode())
                 safe_extract_zip(z, output_dir)
                 return output_dir
-    except:
-        pass
-    # Fallback to standard zipfile
-    with zipfile.ZipFile(archive, 'r') as z:
-        if password:
-            z.setpassword(password.encode())
-        safe_extract_zip(z, output_dir)
-        return output_dir
+        else:
+            # If no pyzipper, but we have a password, we can still try with standard zipfile,
+            # but it will fail if encrypted. We'll let it fail with a clear message.
+            with zipfile.ZipFile(archive, 'r') as z:
+                if password:
+                    # Standard zipfile can handle ZipCrypto, but not AES. If AES, it will raise RuntimeError.
+                    z.setpassword(password.encode())
+                safe_extract_zip(z, output_dir)
+                return output_dir
+    except Exception as e:
+        # Re-raise with a more informative message if it's an encryption issue
+        if "password" in str(e).lower() or "encrypt" in str(e).lower():
+            raise ValueError(f"Failed to extract encrypted archive. Ensure the password is correct and pyzipper is installed for AES support.") from e
+        raise
 
 # =============================================================================
 # CLI info (unchanged)
