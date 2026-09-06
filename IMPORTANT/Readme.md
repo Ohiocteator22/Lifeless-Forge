@@ -13,6 +13,9 @@ YOU **NEED** TO HAVE FORGE.EXE IN THE dist/ Folder alongside the .reg files or i
 ## STEP BY STEP
 - Download Forge from the releases page, this feature is compatible with v1.1.8 and above
 - Extract the .tar.xz file via forge
+- it will extract to a .tar.bin file
+- rename it to .tar
+-extract via normal Windows explorer extraction
 - it will extract to a folder, enter the folder, and goto
 ```
 Lifeless-Forge-main/Lifeless-Forge-main/dist
