@@ -6,6 +6,7 @@ import os
 from forge.core import generate_zip, generate_batch, extract_archive, print_stats, cli_info as core_info
 from forge.utils import format_size, parse_size_string, get_progress_printer
 
+__all__ = ['setup_cli_parser', 'cli_generate', 'cli_batch', 'cli_extract']
 def cli_generate(args):
     progress = get_progress_printer(enable=not args.no_progress, total=args.size)
     stats = generate_zip(
