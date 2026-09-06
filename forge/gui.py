@@ -7,19 +7,67 @@ import os
 import zipfile
 from .core import generate_zip, generate_batch, extract_archive
 from .utils import format_size, parse_size_string
+from .config import load_config, save_config, detect_system_theme
 
-# Try to import tkinterdnd2 – if missing, fall back to regular Tk
+# Try to import tkinterdnd2 – fallback if not available
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
     HAS_DND = True
 except ImportError:
     HAS_DND = False
-    # Fallback: use regular tk.Tk (no drag‑and‑drop)
     TkinterDnD = None
     DND_FILES = None
 
+# ---------- Theme colors ----------
+LIGHT = {
+    "bg": "#f0f0f0",
+    "fg": "#000000",
+    "selectbg": "#cce8ff",
+    "textbg": "#ffffff",
+    "textfg": "#000000",
+    "button": "#e0e0e0",
+    "active": "#d0d0d0",
+}
+DARK = {
+    "bg": "#2b2b2b",
+    "fg": "#f0f0f0",
+    "selectbg": "#3a3a3a",
+    "textbg": "#3a3a3a",
+    "textfg": "#f0f0f0",
+    "button": "#3a3a3a",
+    "active": "#4a4a4a",
+}
+
+def apply_theme(widget, theme_colors):
+    """Apply colors to ttk widgets and standard Tk widgets."""
+    style = ttk.Style()
+    style.theme_use('clam')
+    style.configure('.', background=theme_colors["bg"], foreground=theme_colors["fg"],
+                    selectbackground=theme_colors["selectbg"], fieldbackground=theme_colors["textbg"])
+    style.map('TButton', background=[('active', theme_colors["active"])])
+    style.map('TCombobox', background=[('active', theme_colors["active"])])
+    style.configure('TLabel', background=theme_colors["bg"], foreground=theme_colors["fg"])
+    style.configure('TFrame', background=theme_colors["bg"])
+    style.configure('TNotebook', background=theme_colors["bg"])
+    style.configure('TNotebook.Tab', background=theme_colors["button"])
+    style.map('TNotebook.Tab', background=[('selected', theme_colors["selectbg"])])
+    # Update root and other widgets
+    widget.configure(bg=theme_colors["bg"])
+    # For Text widgets, we'll set them individually in the loop later
+
 def launch_gui():
-    # Create the root window with DnD support if available
+    # ----- Load config and determine initial theme -----
+    config = load_config()
+    dark_mode_pref = config.get("dark_mode", None)  # None = auto
+    if dark_mode_pref is None:
+        # Auto-detect
+        dark_mode = detect_system_theme()
+        if dark_mode is None:
+            dark_mode = False  # fallback to light
+    else:
+        dark_mode = dark_mode_pref
+
+    # Create root window with DnD support if available
     if HAS_DND:
         root = TkinterDnD.Tk()
     else:
@@ -33,6 +81,48 @@ def launch_gui():
     except:
         pass
 
+    # ---- Menu bar ----
+    menubar = tk.Menu(root)
+    view_menu = tk.Menu(menubar, tearoff=0)
+    view_menu.add_checkbutton(label="Dark Mode", variable=tk.BooleanVar(value=dark_mode),
+                              command=lambda: toggle_dark_mode())
+    menubar.add_cascade(label="View", menu=view_menu)
+    root.config(menu=menubar)
+
+    # ---- Style ----
+    style = ttk.Style()
+    style.theme_use('clam')
+
+    # ---- Apply initial theme ----
+    current_theme_colors = DARK if dark_mode else LIGHT
+    apply_theme(root, current_theme_colors)
+
+    # ---- Function to toggle dark mode ----
+    def toggle_dark_mode():
+        nonlocal dark_mode
+        dark_mode = not dark_mode
+        # Update menu check
+        view_menu.entryconfig(0, variable=tk.BooleanVar(value=dark_mode))
+        # Update style
+        colors = DARK if dark_mode else LIGHT
+        apply_theme(root, colors)
+        # Update all text widgets
+        for child in root.winfo_children():
+            update_text_widgets(child, colors)
+        # Save preference
+        config["dark_mode"] = dark_mode
+        save_config(config)
+
+    def update_text_widgets(widget, colors):
+        if isinstance(widget, tk.Text):
+            widget.config(bg=colors["textbg"], fg=colors["textfg"],
+                          insertbackground=colors["fg"])
+        for child in widget.winfo_children():
+            update_text_widgets(child, colors)
+
+    # We'll call update_text_widgets after everything is created
+
+    # ---- Build the UI ----
     nb = ttk.Notebook(root)
     nb.pack(fill="both", expand=True, padx=5, pady=5)
 
@@ -54,12 +144,11 @@ def launch_gui():
 
     row = 0
 
-    # ---- Input Section (with drag‑and‑drop) ----
+    # ---- Input Section ----
     ttk.Label(tab_single, text="Input (drag & drop or browse):").grid(row=row, column=0, padx=5, pady=5, sticky="w")
     input_entry = ttk.Entry(tab_single, textvariable=input_path_var, width=40)
     input_entry.grid(row=row, column=1, padx=5, pady=5, sticky="ew")
 
-    # Enable drag‑and‑drop on the input entry
     if HAS_DND:
         input_entry.drop_target_register(DND_FILES)
         input_entry.dnd_bind('<<Drop>>', lambda e: handle_drop(e, input_path_var))
@@ -129,14 +218,12 @@ def launch_gui():
         log_single.config(state="disabled")
 
     def handle_drop(event, var):
-        # The dropped data is a string with file paths separated by braces or newlines
         raw = event.data
-        # Clean up: remove braces and split by spaces/newlines
         if raw.startswith('{') and raw.endswith('}'):
             raw = raw[1:-1]
         paths = [p.strip('{}') for p in raw.split() if p.strip()]
         if paths:
-            var.set(paths[0])  # Take the first dropped item
+            var.set(paths[0])
 
     def generate_single_thread():
         gen_btn.config(state="disabled")
@@ -341,7 +428,6 @@ def launch_gui():
         )
         if not archive: return
 
-        # Only ask for password if it's a ZIP/Office file (not XZ)
         if archive.lower().endswith(('.zip', '.pptx', '.docx', '.xlsx')):
             pwd = simpledialog.askstring("Password", "Enter password (if needed):", show='*')
             if pwd is None:
@@ -381,6 +467,9 @@ def launch_gui():
 
     ttk.Button(tab_extra, text="Extract Archive", command=do_extract).pack(pady=10)
     ttk.Button(tab_extra, text="Show Info", command=do_info).pack(pady=10)
+
+    # ---- After building all widgets, apply theme to text widgets ----
+    update_text_widgets(root, current_theme_colors)
 
     root.mainloop()
 
