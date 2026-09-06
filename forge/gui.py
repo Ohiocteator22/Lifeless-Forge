@@ -436,11 +436,11 @@ def launch_gui():
         results = generate_batch(tasks, progress_callback=batch_progress)
         log_batch_msg("\n=== Summary ===")
         # ---------- REPLACE THIS LOOP ----------
-        for r in results:
-            msg = f"{os.path.basename(r['output'])} ({r['format'].upper()}, {r['algo'].upper()}): {format_size(r['extracted_bytes'])} → {format_size(r['compressed_bytes'])} (ratio {r['ratio']:.2f}x)"
-            if "time" in r:
-                msg += f" | Time: {format_time(r['time'])}"
-            log_batch_msg(msg)
+       for r in results:
+        msg = f"{os.path.basename(r['output'])} ({r['format'].upper()}, {r['algo'].upper()}): {format_size(r['extracted_bytes'])} → {format_size(r['compressed_bytes'])} (ratio {r['ratio']:.2f}x)"
+        if "time" in r:
+            msg += f" | Time: {format_time(r['time'])}"
+        log_batch_msg(msg)
         # ----------------------------------------
     except Exception as e:
         log_batch_msg(f"Error: {e}")
