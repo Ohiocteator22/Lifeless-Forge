@@ -55,6 +55,48 @@ def is_tar_file(filepath):
         return False
 
 # =============================================================================
+# Safe ZIP extraction (prevents path traversal)
+# =============================================================================
+
+def safe_extract_zip(zip_ref, output_dir):
+    """
+    Extract a zipfile safely, preventing path traversal attacks.
+
+    - Rejects absolute paths (e.g., /etc/passwd, C:\Windows)
+    - Rejects relative path traversal (../, ../../)
+    - Handles Windows backslashes correctly
+    - Creates directories recursively
+    - Only writes files inside output_dir
+
+    Raises ValueError if a suspicious entry is detected.
+    """
+    output_dir = os.path.abspath(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+
+    for member in zip_ref.infolist():
+        # Normalize the filename (replace backslashes with forward slashes)
+        # but we still check for absolute and traversal attempts.
+        filename = member.filename
+        # Check for absolute paths (Unix or Windows style)
+        if os.path.isabs(filename) or filename.startswith('/') or filename.startswith('\\') or ':' in filename:
+            raise ValueError(f"Absolute path not allowed: {filename}")
+
+        # Build the target path and normalize it
+        target_path = os.path.join(output_dir, filename)
+        target_path = os.path.normpath(target_path)
+
+        # Ensure the target is inside output_dir
+        if not target_path.startswith(os.path.abspath(output_dir) + os.sep):
+            raise ValueError(f"Path traversal attempt: {filename}")
+
+        if member.is_dir():
+            os.makedirs(target_path, exist_ok=True)
+        else:
+            os.makedirs(os.path.dirname(target_path), exist_ok=True)
+            with open(target_path, 'wb') as f:
+                f.write(zip_ref.read(member))
+
+# =============================================================================
 # Generation
 # =============================================================================
 
@@ -305,7 +347,7 @@ def generate_batch(tasks, progress_callback=None):
     return results
 
 # =============================================================================
-# Universal Extraction (improved with tar detection)
+# Universal Extraction (improved with tar detection and safe ZIP extraction)
 # =============================================================================
 
 def extract_archive(archive, password=None, output_dir=None):
@@ -406,7 +448,7 @@ def extract_archive(archive, password=None, output_dir=None):
             with pyzipper.AESZipFile(archive, 'r') as z:
                 if password:
                     z.setpassword(password.encode())
-                z.extractall(output_dir)
+                safe_extract_zip(z, output_dir)
                 return output_dir
     except:
         pass
@@ -414,7 +456,7 @@ def extract_archive(archive, password=None, output_dir=None):
     with zipfile.ZipFile(archive, 'r') as z:
         if password:
             z.setpassword(password.encode())
-        z.extractall(output_dir)
+        safe_extract_zip(z, output_dir)
         return output_dir
 
 # =============================================================================
