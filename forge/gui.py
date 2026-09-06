@@ -247,47 +247,49 @@ def launch_gui():
         if paths:
             var.set(paths[0])
 
-    def generate_single_thread():
-        gen_btn.config(state="disabled")
+   def generate_single_thread():
+    gen_btn.config(state="disabled")
+    progress_single["value"] = 0
+    log_single_msg("Starting generation...")
+    try:
+        source = input_path_var.get().strip()
+        if source and os.path.exists(source):
+            log_single_msg(f"Using input: {source}")
+            size_mb = None
+        else:
+            source = None
+            size_mb = size_var.get()
+            log_single_msg(f"Generating pattern ({size_mb} MB)")
+        def upd(cur, total):
+            if total:
+                progress_single["value"] = (cur/total)*100
+            root.update_idletasks()
+        stats = generate_zip(
+            output=output_var.get(),
+            extracted_mb=size_mb,
+            pattern=pattern_var.get(),
+            compression=compress_var.get(),
+            password=password_var.get() or None,
+            progress_callback=upd,
+            legacy_crypto=legacy_var.get(),
+            fmt=format_var.get(),
+            algo=algo_var.get(),
+            source=source,
+        )
+        log_single_msg(f"Created: {stats['output']} ({stats['format'].upper()})")
+        log_single_msg(f"Algorithm: {stats['algo'].upper()}")
+        log_single_msg(f"Compressed: {format_size(stats['compressed_bytes'])}")
+        log_single_msg(f"Extracted:  {format_size(stats['extracted_bytes'])}")
+        log_single_msg(f"Ratio: {stats['ratio']:.2f}x")
+        # ----- TIME LOGGING ADDED -----
+        if "time" in stats:
+            log_single_msg(f"Time taken: {format_time(stats['time'])}")
+        # -----------------------------
+    except Exception as e:
+        log_single_msg(f"Error: {e}")
+    finally:
+        gen_btn.config(state="normal")
         progress_single["value"] = 0
-        log_single_msg("Starting generation...")
-        try:
-            source = input_path_var.get().strip()
-            if source and os.path.exists(source):
-                log_single_msg(f"Using input: {source}")
-                size_mb = None
-            else:
-                source = None
-                size_mb = size_var.get()
-                log_single_msg(f"Generating pattern ({size_mb} MB)")
-
-            def upd(cur, total):
-                if total:
-                    progress_single["value"] = (cur/total)*100
-                root.update_idletasks()
-
-            stats = generate_zip(
-                output=output_var.get(),
-                extracted_mb=size_mb,
-                pattern=pattern_var.get(),
-                compression=compress_var.get(),
-                password=password_var.get() or None,
-                progress_callback=upd,
-                legacy_crypto=legacy_var.get(),
-                fmt=format_var.get(),
-                algo=algo_var.get(),
-                source=source,
-            )
-            log_single_msg(f"Created: {stats['output']} ({stats['format'].upper()})")
-            log_single_msg(f"Algorithm: {stats['algo'].upper()}")
-            log_single_msg(f"Compressed: {format_size(stats['compressed_bytes'])}")
-            log_single_msg(f"Extracted:  {format_size(stats['extracted_bytes'])}")
-            log_single_msg(f"Ratio: {stats['ratio']:.2f}x")
-        except Exception as e:
-            log_single_msg(f"Error: {e}")
-        finally:
-            gen_btn.config(state="normal")
-            progress_single["value"] = 0
 
     gen_btn = ttk.Button(tab_single, text="Generate", command=lambda: threading.Thread(target=generate_single_thread, daemon=True).start())
     gen_btn.grid(row=row, column=0, columnspan=3, pady=10)
