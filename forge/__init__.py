@@ -1,11 +1,10 @@
-# forge/__init__.py
+
 """
 Lifeless-Forge – A ZIP compression tool with high-ratio compression,
 password protection, batch generation, and Office formats.
 """
 
-# forge/__init__.py
-# forge/__init__.py
+
 __version__ = "1.2.0"
 __author__ = "Lifeless"
 from .core import generate_zip, generate_batch, extract_archive
