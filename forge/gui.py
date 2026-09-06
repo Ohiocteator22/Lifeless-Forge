@@ -398,50 +398,55 @@ def launch_gui():
         batch_log.config(state="disabled")
 
     def generate_batch_thread():
-        batch_btn.config(state="disabled")
+    batch_btn.config(state="disabled")
+    batch_progress_bar["value"] = 0
+    log_batch_msg("Starting batch generation...")
+    try:
+        size_strs = [s.strip() for s in batch_sizes_var.get().split(',') if s.strip()]
+        tasks = []
+        fmt = batch_format_var.get()
+        algo = batch_algo_var.get()
+        source = batch_input_path_var.get().strip()
+        if source and not os.path.exists(source):
+            raise ValueError(f"Input source not found: {source}")
+        for s in size_strs:
+            size_mb = parse_size_string(s)
+            out_name = batch_output_pattern_var.get().replace("{size}", s).replace("{size_mb}", str(size_mb))
+            task = {
+                "size": size_mb,
+                "output": out_name,
+                "pattern": batch_pattern_var.get(),
+                "compression": batch_compress_var.get(),
+                "password": batch_password_var.get() or None,
+                "legacy": batch_legacy_var.get(),
+                "format": fmt,
+                "algo": algo,
+            }
+            if source:
+                task["source"] = source
+            tasks.append(task)
+        if not tasks:
+            log_batch_msg("No tasks defined.")
+            return
+        log_batch_msg(f"Total tasks: {len(tasks)}")
+        def batch_progress(current, total, msg):
+            batch_progress_bar["value"] = ((current+1) / total) * 100
+            root.update_idletasks()
+            log_batch_msg(f"[{current+1}/{total}] {msg}")
+        results = generate_batch(tasks, progress_callback=batch_progress)
+        log_batch_msg("\n=== Summary ===")
+        # ---------- REPLACE THIS LOOP ----------
+        for r in results:
+            msg = f"{os.path.basename(r['output'])} ({r['format'].upper()}, {r['algo'].upper()}): {format_size(r['extracted_bytes'])} → {format_size(r['compressed_bytes'])} (ratio {r['ratio']:.2f}x)"
+            if "time" in r:
+                msg += f" | Time: {format_time(r['time'])}"
+            log_batch_msg(msg)
+        # ----------------------------------------
+    except Exception as e:
+        log_batch_msg(f"Error: {e}")
+    finally:
+        batch_btn.config(state="normal")
         batch_progress_bar["value"] = 0
-        log_batch_msg("Starting batch generation...")
-        try:
-            size_strs = [s.strip() for s in batch_sizes_var.get().split(',') if s.strip()]
-            tasks = []
-            fmt = batch_format_var.get()
-            algo = batch_algo_var.get()
-            source = batch_input_path_var.get().strip()
-            if source and not os.path.exists(source):
-                raise ValueError(f"Input source not found: {source}")
-            for s in size_strs:
-                size_mb = parse_size_string(s)
-                out_name = batch_output_pattern_var.get().replace("{size}", s).replace("{size_mb}", str(size_mb))
-                task = {
-                    "size": size_mb,
-                    "output": out_name,
-                    "pattern": batch_pattern_var.get(),
-                    "compression": batch_compress_var.get(),
-                    "password": batch_password_var.get() or None,
-                    "legacy": batch_legacy_var.get(),
-                    "format": fmt,
-                    "algo": algo,
-                }
-                if source:
-                    task["source"] = source
-                tasks.append(task)
-            if not tasks:
-                log_batch_msg("No tasks defined.")
-                return
-            log_batch_msg(f"Total tasks: {len(tasks)}")
-            def batch_progress(current, total, msg):
-                batch_progress_bar["value"] = ((current+1) / total) * 100
-                root.update_idletasks()
-                log_batch_msg(f"[{current+1}/{total}] {msg}")
-            results = generate_batch(tasks, progress_callback=batch_progress)
-            log_batch_msg("\n=== Summary ===")
-            for r in results:
-                log_batch_msg(f"{os.path.basename(r['output'])} ({r['format'].upper()}, {r['algo'].upper()}): {format_size(r['extracted_bytes'])} → {format_size(r['compressed_bytes'])} (ratio {r['ratio']:.2f}x)")
-        except Exception as e:
-            log_batch_msg(f"Error: {e}")
-        finally:
-            batch_btn.config(state="normal")
-            batch_progress_bar["value"] = 0
 
     batch_btn = ttk.Button(tab_batch, text="Generate Batch", command=lambda: threading.Thread(target=generate_batch_thread, daemon=True).start())
     batch_btn.grid(row=br, column=0, columnspan=2, pady=10)
