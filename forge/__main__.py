@@ -1,6 +1,7 @@
 # forge/__main__.py
 import sys
-from forge.cli import setup_cli_parser, cli_generate, cli_batch, cli_extract, cli_info
+from forge.cli import setup_cli_parser, cli_generate, cli_batch, cli_extract
+from forge.core import cli_info
 from forge.gui import launch_gui
 
 def main():
