@@ -10,12 +10,15 @@ block_cipher = None
 # Collect all submodules from the 'forge' package
 forge_hiddenimports = collect_submodules('forge')
 
+# Also collect data files if any (icons, etc.)
+datas = [('app_icon.ico', '.')]
+
 a = Analysis(
     ['run.py'],
-    pathex=[],
+    pathex=[os.path.dirname(os.path.abspath(__file__))],  # IMPORTANT: add current dir to path
     binaries=[],
-    datas=[('app_icon.ico', '.')],  # Include the icon at the root
-    hiddenimports=forge_hiddenimports + ['sv_ttk', 'zstandard'],
+    datas=datas,
+    hiddenimports=forge_hiddenimports + ['sv_ttk', 'zstandard', 'tkinterdnd2'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -42,7 +45,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,          # Keep console for debugging; set to False for GUI-only
+    console=True,              # KEEP THIS – shows error messages
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
