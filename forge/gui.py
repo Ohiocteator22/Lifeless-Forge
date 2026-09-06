@@ -45,11 +45,9 @@ def get_colors(dark_mode):
         }
 
 def apply_custom_colors(root_widget, colors):
-    """Iteratively apply colors to widgets that support them, skipping ttk widgets."""
     stack = [root_widget]
     while stack:
         widget = stack.pop()
-        # Only attempt if widget has a 'config' method
         if hasattr(widget, 'config'):
             try:
                 widget.config(
@@ -59,9 +57,7 @@ def apply_custom_colors(root_widget, colors):
                     selectbackground=colors["selectbg"],
                 )
             except tk.TclError:
-                # Ignore widgets that don't accept these options (e.g., ttk)
                 pass
-        # Add children to stack
         stack.extend(widget.winfo_children())
 
 def launch_gui():
@@ -106,7 +102,6 @@ def launch_gui():
         else:
             sv_ttk.set_theme("light")
     else:
-        # Fallback: use clam with custom colors
         style = ttk.Style()
         style.theme_use('clam')
 
@@ -126,20 +121,17 @@ def launch_gui():
             else:
                 sv_ttk.set_theme("light")
         else:
-            # Fallback: manual theme switching
             style = ttk.Style()
             style.theme_use('clam')
 
-        # Update custom colors
         colors = get_colors(dark_mode)
         root.configure(bg=colors["bg"])
         apply_custom_colors(root, colors)
 
-        # Save preference
         config["dark_mode"] = dark_mode
         save_config(config)
 
-    # ---- Build the UI (same as before) ----
+    # ---- Build the UI ----
     nb = ttk.Notebook(root)
     nb.pack(fill="both", expand=True, padx=5, pady=5)
 
@@ -200,7 +192,7 @@ def launch_gui():
     row += 1
 
     ttk.Label(tab_single, text="Algorithm:").grid(row=row, column=0, padx=5, pady=5, sticky="w")
-    algo_combo = ttk.Combobox(tab_single, textvariable=algo_var, values=["deflate", "lzma"], state="readonly")
+    algo_combo = ttk.Combobox(tab_single, textvariable=algo_var, values=["deflate", "lzma", "zstd"], state="readonly")
     algo_combo.set("deflate")
     algo_combo.grid(row=row, column=1, padx=5, pady=5, sticky="w")
     row += 1
@@ -210,8 +202,22 @@ def launch_gui():
     ttk.Button(tab_single, text="Browse", command=lambda: output_var.set(filedialog.asksaveasfilename(defaultextension="."+format_var.get()))).grid(row=row, column=2, padx=5, pady=5)
     row += 1
 
-    ttk.Checkbutton(tab_single, text="Use DEFLATE compression", variable=compress_var).grid(row=row, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+    # ---- Compression checkbox ----
+    compress_var = tk.BooleanVar(value=True)
+    compress_check = ttk.Checkbutton(tab_single, text="Use ZIP compression (Store vs DEFLATE)", variable=compress_var)
+    compress_check.grid(row=row, column=0, columnspan=2, padx=5, pady=5, sticky="w")
     row += 1
+
+    # ---- Dynamic disable for LZMA/Zstd ----
+    def on_algo_change(event):
+        if algo_var.get() in ("lzma", "zstd"):
+            compress_check.config(state="disabled")
+            compress_var.set(True)
+        else:
+            compress_check.config(state="normal")
+
+    algo_combo.bind("<<ComboboxSelected>>", on_algo_change)
+    on_algo_change(None)
 
     ttk.Label(tab_single, text="Password (ZIP only):").grid(row=row, column=0, padx=5, pady=5, sticky="w")
     ttk.Entry(tab_single, textvariable=password_var, show="*", width=20).grid(row=row, column=1, padx=5, pady=5, sticky="w")
@@ -343,15 +349,31 @@ def launch_gui():
     br += 1
 
     ttk.Label(tab_batch, text="Algorithm:").grid(row=br, column=0, padx=5, pady=5, sticky="w")
-    ttk.Combobox(tab_batch, textvariable=batch_algo_var, values=["deflate", "lzma"], state="readonly").grid(row=br, column=1, padx=5, pady=5, sticky="w")
+    batch_algo_combo = ttk.Combobox(tab_batch, textvariable=batch_algo_var, values=["deflate", "lzma", "zstd"], state="readonly")
+    batch_algo_combo.set("deflate")
+    batch_algo_combo.grid(row=br, column=1, padx=5, pady=5, sticky="w")
     br += 1
 
     ttk.Label(tab_batch, text="Output pattern:").grid(row=br, column=0, padx=5, pady=5, sticky="w")
     ttk.Entry(tab_batch, textvariable=batch_output_pattern_var, width=30).grid(row=br, column=1, padx=5, pady=5, sticky="ew")
     br += 1
 
-    ttk.Checkbutton(tab_batch, text="Use DEFLATE compression", variable=batch_compress_var).grid(row=br, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+    # ---- Batch compression checkbox ----
+    batch_compress_var = tk.BooleanVar(value=True)
+    batch_compress_check = ttk.Checkbutton(tab_batch, text="Use ZIP compression (Store vs DEFLATE)", variable=batch_compress_var)
+    batch_compress_check.grid(row=br, column=0, columnspan=2, padx=5, pady=5, sticky="w")
     br += 1
+
+    # ---- Dynamic disable for LZMA/Zstd (Batch) ----
+    def on_batch_algo_change(event):
+        if batch_algo_var.get() in ("lzma", "zstd"):
+            batch_compress_check.config(state="disabled")
+            batch_compress_var.set(True)
+        else:
+            batch_compress_check.config(state="normal")
+
+    batch_algo_combo.bind("<<ComboboxSelected>>", on_batch_algo_change)
+    on_batch_algo_change(None)
 
     ttk.Label(tab_batch, text="Password (ZIP only):").grid(row=br, column=0, padx=5, pady=5, sticky="w")
     ttk.Entry(tab_batch, textvariable=batch_password_var, show="*", width=20).grid(row=br, column=1, padx=5, pady=5, sticky="w")
@@ -434,10 +456,11 @@ def launch_gui():
         archive = filedialog.askopenfilename(
             title="Select archive",
             filetypes=[
-                ("All archives", "*.zip *.xz *.lzma *.tar.xz *.txz *.pptx *.docx *.xlsx"),
+                ("All archives", "*.zip *.xz *.lzma *.tar.xz *.txz *.zst *.zstd *.tar.zst *.tzst *.pptx *.docx *.xlsx"),
                 ("ZIP files", "*.zip"),
                 ("XZ files", "*.xz *.lzma"),
                 ("TAR.XZ files", "*.tar.xz *.txz"),
+                ("Zstandard", "*.zst *.zstd *.tar.zst *.tzst"),
                 ("PPTX files", "*.pptx"),
                 ("DOCX files", "*.docx"),
                 ("XLSX files", "*.xlsx")
@@ -459,12 +482,12 @@ def launch_gui():
             messagebox.showerror("Error", str(e))
 
     def do_info():
-        archive = filedialog.askopenfilename(title="Select archive", filetypes=[("All archives", "*.zip *.pptx *.docx *.xlsx *.xz *.lzma *.tar.xz *.txz")])
+        archive = filedialog.askopenfilename(title="Select archive", filetypes=[("All archives", "*.zip *.pptx *.docx *.xlsx *.xz *.lzma *.tar.xz *.txz *.zst *.zstd *.tar.zst *.tzst")])
         if not archive: return
         try:
-            if archive.lower().endswith(('.xz', '.lzma', '.tar.xz', '.txz')):
+            if archive.lower().endswith(('.xz', '.lzma', '.tar.xz', '.txz', '.zst', '.zstd', '.tar.zst', '.tzst')):
                 size = os.path.getsize(archive)
-                msg = f"Archive: {os.path.basename(archive)}\nType: LZMA-based\nCompressed size: {format_size(size)}\n(Detailed info not available for this format)"
+                msg = f"Archive: {os.path.basename(archive)}\nType: LZMA or Zstandard\nCompressed size: {format_size(size)}\n(Detailed info not available)"
                 messagebox.showinfo("Archive Info", msg)
                 return
 
@@ -485,7 +508,7 @@ def launch_gui():
     ttk.Button(tab_extra, text="Extract Archive", command=do_extract).pack(pady=10)
     ttk.Button(tab_extra, text="Show Info", command=do_info).pack(pady=10)
 
-    # ---- Apply custom colors to standard widgets ----
+    # ---- Apply custom colors ----
     apply_custom_colors(root, get_colors(dark_mode))
 
     root.mainloop()
