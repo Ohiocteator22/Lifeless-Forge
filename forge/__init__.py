@@ -1,13 +1,11 @@
-
-"""
-Lifeless-Forge – A ZIP compression tool with high-ratio compression,
-password protection, batch generation, and Office formats.
-"""
-
-
+# forge/__init__.py
 __version__ = "1.1.6"
-__author__ = "Lifeless"
-from .core import generate_zip, generate_batch, extract_archive
-from .utils import format_size, parse_size_string
-from .templates import create_pptx_template, create_docx_template, create_xlsx_template
-from .config import load_config, save_config, detect_system_theme  # new
+__all__ = ["cli", "gui", "core", "templates", "utils", "config"]
+
+# Explicitly import submodules to make PyInstaller see them
+from . import cli
+from . import gui
+from . import core
+from . import templates
+from . import utils
+from . import config
