@@ -74,8 +74,6 @@ def safe_extract_zip(zip_ref, output_dir):
     os.makedirs(output_dir, exist_ok=True)
 
     for member in zip_ref.infolist():
-        # Normalize the filename (replace backslashes with forward slashes)
-        # but we still check for absolute and traversal attempts.
         filename = member.filename
         # Check for absolute paths (Unix or Windows style)
         if os.path.isabs(filename) or filename.startswith('/') or filename.startswith('\\') or ':' in filename:
@@ -95,6 +93,37 @@ def safe_extract_zip(zip_ref, output_dir):
             os.makedirs(os.path.dirname(target_path), exist_ok=True)
             with open(target_path, 'wb') as f:
                 f.write(zip_ref.read(member))
+
+# =============================================================================
+# Safe TAR extraction (prevents path traversal, rejects symlinks/hardlinks)
+# =============================================================================
+
+def safe_extract_tar(tar_ref, output_dir):
+    """
+    Extract a tarfile safely.
+    - Rejects absolute paths and traversal.
+    - Rejects symlinks and hardlinks (unsafe for our simple model).
+    - Only extracts regular files and directories.
+    """
+    output_dir = os.path.abspath(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+
+    for member in tar_ref.getmembers():
+        # Reject absolute paths
+        if os.path.isabs(member.name) or member.name.startswith('/') or ':' in member.name:
+            raise ValueError(f"Absolute path not allowed: {member.name}")
+        # Reject traversal
+        target_path = os.path.join(output_dir, member.name)
+        target_path = os.path.normpath(target_path)
+        if not target_path.startswith(output_dir + os.sep):
+            raise ValueError(f"Path traversal attempt: {member.name}")
+
+        # Reject symlinks and hardlinks
+        if member.islnk() or member.issym():
+            raise ValueError(f"Symlink or hardlink not allowed: {member.name}")
+
+        # Extract with no extra attributes (set_attrs=False) to avoid any security issues
+        tar_ref.extract(member, output_dir, set_attrs=False)
 
 # =============================================================================
 # Generation
@@ -347,7 +376,7 @@ def generate_batch(tasks, progress_callback=None):
     return results
 
 # =============================================================================
-# Universal Extraction (improved with tar detection and safe ZIP extraction)
+# Universal Extraction (improved with tar detection and safe extraction)
 # =============================================================================
 
 def extract_archive(archive, password=None, output_dir=None):
@@ -360,20 +389,19 @@ def extract_archive(archive, password=None, output_dir=None):
     # ---- Plain .tar ----
     if archive.lower().endswith('.tar'):
         with tarfile.open(archive, 'r') as tar:
-            tar.extractall(output_dir)
+            safe_extract_tar(tar, output_dir)
         return output_dir
 
     # ---- .tar.xz / .txz ----
     if archive.lower().endswith(('.tar.xz', '.txz')):
         with tarfile.open(archive, 'r:xz') as tar:
-            tar.extractall(output_dir)
+            safe_extract_tar(tar, output_dir)
         return output_dir
 
     # ---- .tar.zst / .tzst ----
     if archive.lower().endswith(('.tar.zst', '.tzst')):
         if not HAS_ZSTD:
             raise ImportError("zstandard not installed.")
-        # Decompress to temp tar, then extract
         with tempfile.NamedTemporaryFile(delete=False, suffix='.tar') as tmp:
             temp_tar = tmp.name
         try:
@@ -382,7 +410,7 @@ def extract_archive(archive, password=None, output_dir=None):
                     decompressor = zstd.ZstdDecompressor()
                     f_out.write(decompressor.decompress(f_in.read()))
             with tarfile.open(temp_tar, "r") as tar:
-                tar.extractall(output_dir)
+                safe_extract_tar(tar, output_dir)
             return output_dir
         finally:
             if os.path.exists(temp_tar):
@@ -390,20 +418,17 @@ def extract_archive(archive, password=None, output_dir=None):
 
     # ---- .xz / .lzma (might be tar) ----
     if archive.lower().endswith(('.xz', '.lzma')):
-        # Decompress to a temporary file first
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
             temp_out = tmp.name
         try:
             with lzma.open(archive, 'rb') as f_in:
                 with open(temp_out, 'wb') as f_out:
                     shutil.copyfileobj(f_in, f_out)
-            # Check if it's a tar archive
             if is_tar_file(temp_out):
                 with tarfile.open(temp_out, 'r') as tar:
-                    tar.extractall(output_dir)
+                    safe_extract_tar(tar, output_dir)
                 return output_dir
             else:
-                # Not tar – copy as a single file
                 base = os.path.basename(archive)
                 base = os.path.splitext(base)[0] + ".bin"
                 out_path = os.path.join(output_dir, base)
@@ -428,7 +453,7 @@ def extract_archive(archive, password=None, output_dir=None):
                     f_out.write(decompressor.decompress(f_in.read()))
             if is_tar_file(temp_out):
                 with tarfile.open(temp_out, 'r') as tar:
-                    tar.extractall(output_dir)
+                    safe_extract_tar(tar, output_dir)
                 return output_dir
             else:
                 base = os.path.basename(archive)
