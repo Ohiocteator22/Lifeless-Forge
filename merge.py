@@ -15,9 +15,10 @@ modules = [
 
 output_file = "forge_all.py"
 
-with open(output_file, "w") as out:
+# Open the output file with UTF-8 encoding
+with open(output_file, "w", encoding="utf-8") as out:
     out.write("# -*- coding: utf-8 -*-\n")
-    out.write("# Auto‑generated from modular code – do not edit manually\n\n")
+    out.write("# Auto-generated from modular code - do not edit manually\n\n")
     
     # Add a shebang and imports that might be needed globally
     out.write("#!/usr/bin/env python3\n")
@@ -38,12 +39,11 @@ with open(output_file, "w") as out:
             print(f"Warning: {src} not found, skipping.")
             continue
         out.write(f"# ---------- {mod}.py ----------\n")
-        with open(src, "r") as f:
+        with open(src, "r", encoding="utf-8") as f:
             content = f.read()
             # Remove the shebang line if present
             if content.startswith("#!"):
                 content = content[content.index("\n")+1:]
-            # Remove module‑level imports that we already added globally (optional)
             out.write(content)
             out.write("\n\n")
 
