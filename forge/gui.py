@@ -45,17 +45,23 @@ def get_colors(dark_mode):
         }
 
 def apply_custom_colors(root_widget, colors):
-    """Iteratively apply colors to all standard Tk widgets in the hierarchy."""
+    """Iteratively apply colors to widgets that support them, skipping ttk widgets."""
     stack = [root_widget]
     while stack:
         widget = stack.pop()
-        if isinstance(widget, (tk.Text, tk.Entry, tk.Listbox, tk.Canvas)):
-            widget.config(
-                bg=colors["textbg"],
-                fg=colors["textfg"],
-                insertbackground=colors["fg"],
-                selectbackground=colors["selectbg"],
-            )
+        # Only attempt if widget has a 'config' method
+        if hasattr(widget, 'config'):
+            try:
+                widget.config(
+                    bg=colors["textbg"],
+                    fg=colors["textfg"],
+                    insertbackground=colors["fg"],
+                    selectbackground=colors["selectbg"],
+                )
+            except tk.TclError:
+                # Ignore widgets that don't accept these options (e.g., ttk)
+                pass
+        # Add children to stack
         stack.extend(widget.winfo_children())
 
 def launch_gui():
