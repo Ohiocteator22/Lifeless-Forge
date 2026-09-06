@@ -96,6 +96,7 @@ def setup_cli_parser():
     gen.add_argument("--password", help="Password for encryption (ZIP only)")
     gen.add_argument("--legacy", action="store_true", help="Use legacy ZipCrypto (ZIP only)")
     gen.add_argument("--no-progress", action="store_true", help="Disable progress bar")
+    gen.add_argument("--algo", choices=["deflate", "lzma", "zstd"], default="deflate", ...)
     gen.set_defaults(func=cli_generate)
 
     batch = subparsers.add_parser("batch", help="Generate multiple archives")
@@ -109,6 +110,7 @@ def setup_cli_parser():
     batch.add_argument("--store", action="store_true", help="No compression")
     batch.add_argument("--password", help="Password (ZIP only)")
     batch.add_argument("--legacy", action="store_true", help="Legacy encryption")
+    batch.add_argument("--algo", choices=["deflate", "lzma", "zstd"], default="deflate", ...)
     batch.set_defaults(func=cli_batch)
 
     ext = subparsers.add_parser("extract", help="Extract a password-protected archive")
