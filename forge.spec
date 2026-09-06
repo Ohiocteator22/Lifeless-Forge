@@ -15,7 +15,7 @@ datas = [('app_icon.ico', '.')]
 
 a = Analysis(
     ['run.py'],
-    pathex=[os.path.dirname(os.path.abspath(__file__))],  # IMPORTANT: add current dir to path
+    pathex=[os.getcwd()],                      # <-- FIXED
     binaries=[],
     datas=datas,
     hiddenimports=forge_hiddenimports + ['sv_ttk', 'zstandard', 'tkinterdnd2'],
