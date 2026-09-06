@@ -8,12 +8,30 @@ import zipfile
 from .core import generate_zip, generate_batch, extract_archive
 from .utils import format_size, parse_size_string
 
+# Try to import tkinterdnd2 – if missing, fall back to regular Tk
+try:
+    from tkinterdnd2 import DND_FILES, TkinterDnD
+    HAS_DND = True
+except ImportError:
+    HAS_DND = False
+    # Fallback: use regular tk.Tk (no drag‑and‑drop)
+    TkinterDnD = None
+    DND_FILES = None
+
 def launch_gui():
-    root = tk.Tk()
+    # Create the root window with DnD support if available
+    if HAS_DND:
+        root = TkinterDnD.Tk()
+    else:
+        root = tk.Tk()
+
     root.title("Lifeless-Forge – Compression Tool")
-    root.geometry("720x700")
+    root.geometry("760x720")
     root.resizable(False, False)
-    root.iconbitmap(resource_path("app_icon.ico"))
+    try:
+        root.iconbitmap(resource_path("app_icon.ico"))
+    except:
+        pass
 
     nb = ttk.Notebook(root)
     nb.pack(fill="both", expand=True, padx=5, pady=5)
@@ -36,9 +54,16 @@ def launch_gui():
 
     row = 0
 
-    # ---- Input Section ----
-    ttk.Label(tab_single, text="Input (optional):").grid(row=row, column=0, padx=5, pady=5, sticky="w")
-    ttk.Entry(tab_single, textvariable=input_path_var, width=30).grid(row=row, column=1, padx=5, pady=5, sticky="ew")
+    # ---- Input Section (with drag‑and‑drop) ----
+    ttk.Label(tab_single, text="Input (drag & drop or browse):").grid(row=row, column=0, padx=5, pady=5, sticky="w")
+    input_entry = ttk.Entry(tab_single, textvariable=input_path_var, width=40)
+    input_entry.grid(row=row, column=1, padx=5, pady=5, sticky="ew")
+
+    # Enable drag‑and‑drop on the input entry
+    if HAS_DND:
+        input_entry.drop_target_register(DND_FILES)
+        input_entry.dnd_bind('<<Drop>>', lambda e: handle_drop(e, input_path_var))
+
     def browse_input():
         if input_is_folder_var.get():
             folder = filedialog.askdirectory()
@@ -48,6 +73,7 @@ def launch_gui():
             file = filedialog.askopenfilename()
             if file:
                 input_path_var.set(file)
+
     ttk.Button(tab_single, text="Browse", command=browse_input).grid(row=row, column=2, padx=5, pady=5)
     row += 1
     ttk.Checkbutton(tab_single, text="Input is a Folder", variable=input_is_folder_var).grid(row=row, column=1, padx=5, pady=5, sticky="w")
@@ -102,16 +128,24 @@ def launch_gui():
         log_single.see("end")
         log_single.config(state="disabled")
 
+    def handle_drop(event, var):
+        # The dropped data is a string with file paths separated by braces or newlines
+        raw = event.data
+        # Clean up: remove braces and split by spaces/newlines
+        if raw.startswith('{') and raw.endswith('}'):
+            raw = raw[1:-1]
+        paths = [p.strip('{}') for p in raw.split() if p.strip()]
+        if paths:
+            var.set(paths[0])  # Take the first dropped item
+
     def generate_single_thread():
         gen_btn.config(state="disabled")
         progress_single["value"] = 0
         log_single_msg("Starting generation...")
         try:
-            source = input_path_var.get() if input_path_var.get().strip() else None
+            source = input_path_var.get().strip()
             if source and os.path.exists(source):
-                # Use input source
                 log_single_msg(f"Using input: {source}")
-                # Size parameter will be ignored if source provided
                 size_mb = None
             else:
                 source = None
@@ -169,8 +203,14 @@ def launch_gui():
 
     br=0
 
-    ttk.Label(tab_batch, text="Input (optional, used for all tasks):").grid(row=br, column=0, padx=5, pady=5, sticky="w")
-    ttk.Entry(tab_batch, textvariable=batch_input_path_var, width=30).grid(row=br, column=1, padx=5, pady=5, sticky="ew")
+    ttk.Label(tab_batch, text="Input (drag & drop or browse, optional):").grid(row=br, column=0, padx=5, pady=5, sticky="w")
+    batch_input_entry = ttk.Entry(tab_batch, textvariable=batch_input_path_var, width=40)
+    batch_input_entry.grid(row=br, column=1, padx=5, pady=5, sticky="ew")
+
+    if HAS_DND:
+        batch_input_entry.drop_target_register(DND_FILES)
+        batch_input_entry.dnd_bind('<<Drop>>', lambda e: handle_drop(e, batch_input_path_var))
+
     def batch_browse_input():
         if batch_input_is_folder_var.get():
             folder = filedialog.askdirectory()
@@ -180,6 +220,7 @@ def launch_gui():
             file = filedialog.askopenfilename()
             if file:
                 batch_input_path_var.set(file)
+
     ttk.Button(tab_batch, text="Browse", command=batch_browse_input).grid(row=br, column=2, padx=5, pady=5)
     br += 1
     ttk.Checkbutton(tab_batch, text="Input is a Folder", variable=batch_input_is_folder_var).grid(row=br, column=1, padx=5, pady=5, sticky="w")
@@ -238,7 +279,7 @@ def launch_gui():
             tasks = []
             fmt = batch_format_var.get()
             algo = batch_algo_var.get()
-            source = batch_input_path_var.get() if batch_input_path_var.get().strip() else None
+            source = batch_input_path_var.get().strip()
             if source and not os.path.exists(source):
                 raise ValueError(f"Input source not found: {source}")
             for s in size_strs:
@@ -318,7 +359,6 @@ def launch_gui():
         archive = filedialog.askopenfilename(title="Select archive", filetypes=[("All archives", "*.zip *.pptx *.docx *.xlsx *.xz *.lzma *.tar.xz *.txz")])
         if not archive: return
         try:
-            # For XZ/tar.xz, show limited info
             if archive.lower().endswith(('.xz', '.lzma', '.tar.xz', '.txz')):
                 size = os.path.getsize(archive)
                 msg = f"Archive: {os.path.basename(archive)}\nType: LZMA-based\nCompressed size: {format_size(size)}\n(Detailed info not available for this format)"
