@@ -1,44 +1,40 @@
 # ⚙️ Lifeless-Forge
 
-**Lifeless-Forge** is a powerful, cross‑platform compression toolkit that creates **highly compressed archives** from repetitive data patterns.  
-It supports **ZIP, PPTX, DOCX, and XLSX** formats, **batch generation**, **password protection** (AES‑256 or legacy ZipCrypto), and comes with both a **CLI** and a **Tkinter GUI**.
+**Lifeless-Forge** is a **cross‑platform compression/decompression toolkit** with both a **CLI** and a **modern Tkinter GUI**.  
+It supports **DEFLATE (ZIP)**, **LZMA (XZ)**, and **Zstandard** algorithms, can generate test data with custom patterns, compress real files/folders, handle **password protection** (AES‑256 or legacy ZipCrypto), and offers **batch processing** and **Windows Explorer integration**.
 
 Perfect for:
-- Testing storage capacity / mail server attachment limits
-- Demonstrating compression ratios (up to 1000× or more)
-- Generating realistic Office documents for testing
-- Benchmarking decompression performance
-
-![Demo](https://via.placeholder.com/800x400?text=Lifeless-Forge+in+action)
+- Testing storage limits & mail server attachment caps
+- Demonstrating extreme compression ratios (up to 32,000× on repetitive data)
+- Generating realistic Office documents (PPTX, DOCX, XLSX) for testing
+- Benchmarking compression performance
 
 ---
 
 ## ✨ Features
 
-- **Multiple Output Formats** – ZIP (standard), PPTX, DOCX, XLSX (all openable in Office / LibreOffice)
-- **Compression Control** – DEFLATE (default) or STORE (no compression)
-- **Password Protection** – AES‑256 (secure) or legacy ZipCrypto (Windows native)
-- **Batch Generation** – from a simple comma‑separated list or a full JSON configuration
-- **Extraction** – Extract password‑protected archives (AES & legacy) with the same tool
-- **Cross‑Platform** – Windows, macOS, Linux (CLI and GUI)
-- **Progress Feedback** – Progress bars in both CLI (using `tqdm`) and GUI
-- **Lightweight** – Single Python script, no heavy dependencies (optional `pyzipper` for encryption)
+- **Three compression algorithms** – DEFLATE (ZIP), LZMA (XZ), Zstandard (Zstd)
+- **Multiple output formats** – ZIP, PPTX, DOCX, XLSX, TAR, TAR.XZ, TAR.ZST
+- **Password protection** – AES‑256 (secure) or legacy ZipCrypto (Windows native)
+- **Batch generation** – from comma‑separated sizes or JSON configuration
+- **Universal extraction** – supports ZIP, XZ, Zstd, TAR, TAR.XZ, TAR.ZST, and Office formats
+- **Real‑file/folder compression** – compress existing files while preserving folder structure
+- **Pattern‑based test generation** – create large repetitive files with a single character
+- **CLI & GUI** – full command‑line support plus a user‑friendly Tkinter interface
+- **Dark/Light mode** – automatically follows system theme; user preference saved
+- **Windows Explorer integration** – right‑click “Forge” submenu (ZIP, XZ, ZST, Extract)
+- **Cross‑platform** – Windows, macOS, Linux (GUI requires a display)
+- **Lightweight & modular** – no heavy dependencies (optional extras for encryption, Zstd, GUI, progress)
 
 ---
 
 ## 🚀 Installation
 
-### From Source
+### From Source (Development)
 
 ```bash
 git clone https://github.com/Ohiocteator22/Lifeless-Forge.git
 cd Lifeless-Forge
-```
-## 📥 Download & Run
-
-### For Windows Users (no Python required!)
-1. Go to the [Releases](https://github.com/Ohiocteator22/Lifeless-Forge/releases) page.
-2. Download `Forge.exe`.
-3. Double‑click to launch the GUI, or run it from the command line:
-   ```cmd
-   Forge.exe generate -s 100 -o demo.pptx --format pptx
+python -m venv .venv
+source .venv/bin/activate      # On Windows: .venv\Scripts\activate
+pip install -e .                # installs core (no optional dependencies)
