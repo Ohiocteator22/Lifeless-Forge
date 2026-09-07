@@ -278,12 +278,11 @@ def launch_gui():
             log_single_msg(f"Compressed: {format_size(stats['compressed_bytes'])}")
             log_single_msg(f"Extracted:  {format_size(stats['extracted_bytes'])}")
             log_single_msg(f"Ratio: {stats['ratio']:.2f}x")
-            # ---------- TIME LOGGING ADDED ----------
             if "time" in stats:
                 log_single_msg(f"Time taken: {format_time(stats['time'])}")
-            # ----------------------------------------
         except Exception as e:
             log_single_msg(f"Error: {e}")
+            messagebox.showerror("Generation Error", str(e))
         finally:
             gen_btn.config(state="normal")
             progress_single["value"] = 0
@@ -428,15 +427,14 @@ def launch_gui():
                 log_batch_msg(f"[{current+1}/{total}] {msg}")
             results = generate_batch(tasks, progress_callback=batch_progress)
             log_batch_msg("\n=== Summary ===")
-            # ---------- UPDATED LOOP WITH TIME ----------
             for r in results:
                 msg = f"{os.path.basename(r['output'])} ({r['format'].upper()}, {r['algo'].upper()}): {format_size(r['extracted_bytes'])} → {format_size(r['compressed_bytes'])} (ratio {r['ratio']:.2f}x)"
                 if "time" in r:
                     msg += f" | Time: {format_time(r['time'])}"
                 log_batch_msg(msg)
-            # -------------------------------------------
         except Exception as e:
             log_batch_msg(f"Error: {e}")
+            messagebox.showerror("Batch Error", str(e))
         finally:
             batch_btn.config(state="normal")
             batch_progress_bar["value"] = 0
@@ -450,6 +448,14 @@ def launch_gui():
     # ---- Tab 3: Extract / Info ----
     tab_extra = ttk.Frame(nb)
     nb.add(tab_extra, text="Extract / Info")
+
+    # Helper to run extraction in a thread
+    def do_extract_thread(archive, password, output_dir):
+        try:
+            out = extract_archive(archive, password, output_dir)
+            root.after(0, lambda: messagebox.showinfo("Success", f"Extracted to: {out}"))
+        except Exception as e:
+            root.after(0, lambda: messagebox.showerror("Extraction Error", str(e)))
 
     def do_extract():
         archive = filedialog.askopenfilename(
@@ -467,27 +473,25 @@ def launch_gui():
         )
         if not archive: return
 
+        pwd = None
         if archive.lower().endswith(('.zip', '.pptx', '.docx', '.xlsx')):
             pwd = simpledialog.askstring("Password", "Enter password (if needed):", show='*')
-            if pwd is None:
+            if pwd is None:  # user cancelled
                 return
-        else:
-            pwd = None
 
-        try:
-            out = extract_archive(archive, pwd)
-            messagebox.showinfo("Success", f"Extracted to: {out}")
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
+        out_dir = filedialog.askdirectory(title="Select extraction directory")
+        if not out_dir:
+            return
 
-    def do_info():
-        archive = filedialog.askopenfilename(title="Select archive", filetypes=[("All archives", "*.zip *.pptx *.docx *.xlsx *.xz *.lzma *.tar.xz *.txz *.zst *.zstd *.tar.zst *.tzst")])
-        if not archive: return
+        # Run extraction in a thread to prevent GUI freezing
+        threading.Thread(target=do_extract_thread, args=(archive, pwd, out_dir), daemon=True).start()
+
+    def do_info_thread(archive):
         try:
             if archive.lower().endswith(('.xz', '.lzma', '.zst', '.zstd', '.tar.xz', '.txz', '.tar.zst', '.tzst')):
                 size = os.path.getsize(archive)
                 msg = f"Archive: {os.path.basename(archive)}\nType: LZMA or Zstd\nCompressed size: {format_size(size)}"
-                messagebox.showinfo("Archive Info", msg)
+                root.after(0, lambda: messagebox.showinfo("Archive Info", msg))
                 return
 
             with zipfile.ZipFile(archive, 'r') as z:
@@ -500,9 +504,14 @@ def launch_gui():
                        f"Compressed: {format_size(total_compressed)}\n"
                        f"Extracted:  {format_size(total_extracted)}\n"
                        f"Ratio: {ratio:.2f}x")
-                messagebox.showinfo("Archive Info", msg)
+                root.after(0, lambda: messagebox.showinfo("Archive Info", msg))
         except Exception as e:
-            messagebox.showerror("Error", str(e))
+            root.after(0, lambda: messagebox.showerror("Info Error", str(e)))
+
+    def do_info():
+        archive = filedialog.askopenfilename(title="Select archive", filetypes=[("All archives", "*.zip *.pptx *.docx *.xlsx *.xz *.lzma *.tar.xz *.txz *.zst *.zstd *.tar.zst *.tzst")])
+        if not archive: return
+        threading.Thread(target=do_info_thread, args=(archive,), daemon=True).start()
 
     ttk.Button(tab_extra, text="Extract Archive", command=do_extract).pack(pady=10)
     ttk.Button(tab_extra, text="Show Info", command=do_info).pack(pady=10)
