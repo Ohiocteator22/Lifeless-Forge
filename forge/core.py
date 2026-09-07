@@ -26,6 +26,13 @@ try:
 except ImportError:
     HAS_PYZIPPER = False
 
+# ----------------------------------------------------------------------
+# Constants
+# ----------------------------------------------------------------------
+CHUNK_SIZE = 1024 * 1024          # 1 MiB
+DEFAULT_MAX_SIZE_MB = 10 * 1024   # 10 GiB
+MAX_SIZE_MB = int(os.environ.get("FORGE_MAX_SIZE_MB", DEFAULT_MAX_SIZE_MB))
+
 # =============================================================================
 # Helper: Get total size of a file/folder
 # =============================================================================
@@ -74,15 +81,12 @@ def safe_extract_zip(zip_ref, output_dir):
 
     for member in zip_ref.infolist():
         filename = member.filename
-        # Check for absolute paths (Unix or Windows style)
         if os.path.isabs(filename) or filename.startswith('/') or filename.startswith('\\') or ':' in filename:
             raise ValueError(f"Absolute path not allowed: {filename}")
 
-        # Build the target path and normalize it
         target_path = os.path.join(output_dir, filename)
         target_path = os.path.normpath(target_path)
 
-        # Ensure the target is inside output_dir
         if not target_path.startswith(os.path.abspath(output_dir) + os.sep):
             raise ValueError(f"Path traversal attempt: {filename}")
 
@@ -108,30 +112,36 @@ def safe_extract_tar(tar_ref, output_dir):
     os.makedirs(output_dir, exist_ok=True)
 
     for member in tar_ref.getmembers():
-        # Reject absolute paths
         if os.path.isabs(member.name) or member.name.startswith('/') or ':' in member.name:
             raise ValueError(f"Absolute path not allowed: {member.name}")
-        # Reject traversal
         target_path = os.path.join(output_dir, member.name)
         target_path = os.path.normpath(target_path)
         if not target_path.startswith(output_dir + os.sep):
             raise ValueError(f"Path traversal attempt: {member.name}")
 
-        # Reject symlinks and hardlinks
         if member.islnk() or member.issym():
             raise ValueError(f"Symlink or hardlink not allowed: {member.name}")
 
-        # Extract with no extra attributes (set_attrs=False) to avoid any security issues
         tar_ref.extract(member, output_dir, set_attrs=False)
 
 # =============================================================================
-# Generation
+# Generation (with size validation and streaming)
 # =============================================================================
 
 def generate_zip(output, extracted_mb=None, pattern="A", compression=True, password=None,
                  progress_callback=None, legacy_crypto=False, fmt="zip", algo="deflate",
                  source=None):
     start_time = time.time()
+
+    # ----- Size validation -----
+    if extracted_mb is not None:
+        if not isinstance(extracted_mb, (int, float)) or extracted_mb <= 0:
+            raise ValueError(f"Invalid extracted_mb: {extracted_mb} (must be > 0)")
+        if extracted_mb > MAX_SIZE_MB:
+            raise ValueError(
+                f"Requested size ({extracted_mb} MB) exceeds maximum allowed ({MAX_SIZE_MB} MB). "
+                "Set FORGE_MAX_SIZE_MB environment variable to increase."
+            )
 
     # ----- Encryption validation -----
     if password is not None:
@@ -142,6 +152,7 @@ def generate_zip(output, extracted_mb=None, pattern="A", compression=True, passw
                 "pyzipper is required for encryption. Please install: pip install pyzipper"
             )
 
+    # ----- Input validation -----
     if source is not None:
         if not os.path.exists(source):
             raise FileNotFoundError(f"Input source not found: {source}")
@@ -183,7 +194,7 @@ def generate_zip(output, extracted_mb=None, pattern="A", compression=True, passw
             else:
                 with lzma.open(output, "w", preset=9) as f:
                     with open(temp_name, "rb") as src:
-                        f.write(src.read())
+                        shutil.copyfileobj(src, f)   # streaming
                 os.remove(temp_name)
         compressed_size = os.path.getsize(output)
         ratio = target_bytes / compressed_size if compressed_size else 0
@@ -197,7 +208,9 @@ def generate_zip(output, extracted_mb=None, pattern="A", compression=True, passw
     if algo == "zstd":
         if not HAS_ZSTD:
             raise ImportError("zstandard not installed. Please pip install zstandard")
+
         if source is not None and os.path.isdir(source):
+            # Create a temporary TAR, then stream-compress it
             if not output.lower().endswith(('.tar.zst', '.tzst')):
                 output = output.rsplit('.', 1)[0] + '.tar.zst'
             with tempfile.NamedTemporaryFile(delete=False, suffix='.tar') as tmp:
@@ -205,26 +218,46 @@ def generate_zip(output, extracted_mb=None, pattern="A", compression=True, passw
             try:
                 with tarfile.open(temp_tar, "w") as tar:
                     tar.add(source, arcname=os.path.basename(source))
-                with open(temp_tar, "rb") as f_in:
-                    with open(output, "wb") as f_out:
-                        compressor = zstd.ZstdCompressor(level=3)
-                        f_out.write(compressor.compress(f_in.read()))
+                # Now stream-compress the temp tar
+                compressor = zstd.ZstdCompressor(level=3)
+                with open(temp_tar, "rb") as fin, open(output, "wb") as fout:
+                    # Use the streaming compressor
+                    # We'll read chunks and compress
+                    # zstandard provides a copy_stream method, but we'll do it manually
+                    # to show the chunking.
+                    while True:
+                        chunk = fin.read(CHUNK_SIZE)
+                        if not chunk:
+                            break
+                        compressed_chunk = compressor.compress(chunk)
+                        fout.write(compressed_chunk)
+                    # Flush any remaining
+                    fout.write(compressor.flush())
             finally:
                 if os.path.exists(temp_tar):
                     os.remove(temp_tar)
         else:
+            # Single file or generated data
             if not output.lower().endswith(('.zst', '.zstd')):
                 output = output.rsplit('.', 1)[0] + '.zst'
             if source is not None and os.path.isfile(source):
-                with open(source, "rb") as f_in:
-                    with open(output, "wb") as f_out:
-                        compressor = zstd.ZstdCompressor(level=3)
-                        f_out.write(compressor.compress(f_in.read()))
+                with open(source, "rb") as fin, open(output, "wb") as fout:
+                    compressor = zstd.ZstdCompressor(level=3)
+                    while True:
+                        chunk = fin.read(CHUNK_SIZE)
+                        if not chunk:
+                            break
+                        fout.write(compressor.compress(chunk))
+                    fout.write(compressor.flush())
             else:
-                with open(temp_name, "rb") as f_in:
-                    with open(output, "wb") as f_out:
-                        compressor = zstd.ZstdCompressor(level=3)
-                        f_out.write(compressor.compress(f_in.read()))
+                with open(temp_name, "rb") as fin, open(output, "wb") as fout:
+                    compressor = zstd.ZstdCompressor(level=3)
+                    while True:
+                        chunk = fin.read(CHUNK_SIZE)
+                        if not chunk:
+                            break
+                        fout.write(compressor.compress(chunk))
+                    fout.write(compressor.flush())
                 os.remove(temp_name)
         compressed_size = os.path.getsize(output)
         ratio = target_bytes / compressed_size if compressed_size else 0
@@ -255,9 +288,7 @@ def generate_zip(output, extracted_mb=None, pattern="A", compression=True, passw
             else:
                 shutil.move(temp_name, dummy_full)
 
-            # ----- Encryption for Office (ZIP) -----
             if password is not None:
-                # password is already validated, HAS_PYZIPPER is True
                 encrypt_method = pyzipper.WZ_AES if not legacy_crypto else pyzipper.WZ_ZIP
                 mode = zipfile.ZIP_DEFLATED if compression else zipfile.ZIP_STORED
                 with pyzipper.AESZipFile(output, "w", compression=mode, encryption=encrypt_method) as z:
@@ -285,7 +316,6 @@ def generate_zip(output, extracted_mb=None, pattern="A", compression=True, passw
 
     # ---- Plain ZIP ----
     if source is not None:
-        # ----- Encryption for plain ZIP with source -----
         if password is not None:
             encrypt_method = pyzipper.WZ_AES if not legacy_crypto else pyzipper.WZ_ZIP
             mode = zipfile.ZIP_DEFLATED if compression else zipfile.ZIP_STORED
@@ -311,7 +341,6 @@ def generate_zip(output, extracted_mb=None, pattern="A", compression=True, passw
                             arcname = os.path.relpath(full_path, os.path.dirname(source))
                             z.write(full_path, arcname=arcname)
     else:
-        # ---- generated data (no source) ----
         if password is not None:
             encrypt_method = pyzipper.WZ_AES if not legacy_crypto else pyzipper.WZ_ZIP
             mode = zipfile.ZIP_DEFLATED if compression else zipfile.ZIP_STORED
@@ -388,7 +417,7 @@ def generate_batch(tasks, progress_callback=None):
     return results
 
 # =============================================================================
-# Universal Extraction (improved with tar detection and safe extraction)
+# Universal Extraction (with streaming decompression)
 # =============================================================================
 
 def extract_archive(archive, password=None, output_dir=None):
@@ -417,10 +446,18 @@ def extract_archive(archive, password=None, output_dir=None):
         with tempfile.NamedTemporaryFile(delete=False, suffix='.tar') as tmp:
             temp_tar = tmp.name
         try:
-            with open(archive, "rb") as f_in:
-                with open(temp_tar, "wb") as f_out:
-                    decompressor = zstd.ZstdDecompressor()
-                    f_out.write(decompressor.decompress(f_in.read()))
+            # Stream decompress to temp tar
+            with open(archive, "rb") as fin, open(temp_tar, "wb") as fout:
+                decompressor = zstd.ZstdDecompressor()
+                # Use the streaming decompressor
+                # We need to feed chunks
+                while True:
+                    chunk = fin.read(CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    fout.write(decompressor.decompress(chunk))
+                # Flush
+                fout.write(decompressor.flush())
             with tarfile.open(temp_tar, "r") as tar:
                 safe_extract_tar(tar, output_dir)
             return output_dir
@@ -435,7 +472,7 @@ def extract_archive(archive, password=None, output_dir=None):
         try:
             with lzma.open(archive, 'rb') as f_in:
                 with open(temp_out, 'wb') as f_out:
-                    shutil.copyfileobj(f_in, f_out)
+                    shutil.copyfileobj(f_in, f_out)   # streaming
             if is_tar_file(temp_out):
                 with tarfile.open(temp_out, 'r') as tar:
                     safe_extract_tar(tar, output_dir)
@@ -459,10 +496,15 @@ def extract_archive(archive, password=None, output_dir=None):
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
             temp_out = tmp.name
         try:
-            with open(archive, "rb") as f_in:
-                with open(temp_out, "wb") as f_out:
-                    decompressor = zstd.ZstdDecompressor()
-                    f_out.write(decompressor.decompress(f_in.read()))
+            # Stream decompress to temp_out
+            with open(archive, "rb") as fin, open(temp_out, "wb") as fout:
+                decompressor = zstd.ZstdDecompressor()
+                while True:
+                    chunk = fin.read(CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    fout.write(decompressor.decompress(chunk))
+                fout.write(decompressor.flush())
             if is_tar_file(temp_out):
                 with tarfile.open(temp_out, 'r') as tar:
                     safe_extract_tar(tar, output_dir)
@@ -488,16 +530,12 @@ def extract_archive(archive, password=None, output_dir=None):
                 safe_extract_zip(z, output_dir)
                 return output_dir
         else:
-            # If no pyzipper, but we have a password, we can still try with standard zipfile,
-            # but it will fail if encrypted. We'll let it fail with a clear message.
             with zipfile.ZipFile(archive, 'r') as z:
                 if password:
-                    # Standard zipfile can handle ZipCrypto, but not AES. If AES, it will raise RuntimeError.
                     z.setpassword(password.encode())
                 safe_extract_zip(z, output_dir)
                 return output_dir
     except Exception as e:
-        # Re-raise with a more informative message if it's an encryption issue
         if "password" in str(e).lower() or "encrypt" in str(e).lower():
             raise ValueError(f"Failed to extract encrypted archive. Ensure the password is correct and pyzipper is installed for AES support.") from e
         raise
