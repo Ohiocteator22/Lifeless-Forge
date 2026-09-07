@@ -51,3 +51,22 @@ def format_time(seconds):
         return f"{mins}m {secs}s"
     hrs, mins = divmod(mins, 60)
     return f"{hrs}h {mins}m {secs}s"
+# ----------------------------------------------------------------------
+# CLI value normalization
+# ----------------------------------------------------------------------
+
+def normalize_format(fmt):
+    """Normalize format string to lowercase; raise if unknown."""
+    fmt = fmt.lower().strip()
+    valid = {"zip", "pptx", "docx", "xlsx"}
+    if fmt not in valid:
+        raise ValueError(f"Unknown format: {fmt}. Allowed: {', '.join(valid)}")
+    return fmt
+
+def normalize_algorithm(algo):
+    """Normalize algorithm string to lowercase; raise if unknown."""
+    algo = algo.lower().strip()
+    valid = {"deflate", "lzma", "zstd"}
+    if algo not in valid:
+        raise ValueError(f"Unknown algorithm: {algo}. Allowed: {', '.join(valid)}")
+    return algo
