@@ -4,27 +4,49 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lifeless-forge"
-version = "1.0.0"
-description = "ZIP compression demonstrator with Office formats and batch generation"
+version = "1.3.0"
+description = "A cross‑platform compression/decompression tool with CLI and GUI, supporting DEFLATE, LZMA, and Zstandard."
 readme = "README.md"
-authors = [{name = "Your Name", email = "you@example.com"}]
+authors = [{name = "Nityam", email = "nityam@example.com"}]
 license = {text = "MIT"}
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Topic :: System :: Archiving :: Compression",
 ]
-dependencies = [
-     "sv-ttk>=2.6.0",
-    "tkinterdnd2>=0.3.0",
-    ]
+dependencies = []  # all dependencies are optional
+dynamic = ["version"]
+
 [project.optional-dependencies]
 encryption = ["pyzipper>=0.3.6"]
+zstd = ["zstandard>=0.22.0"]
+gui = ["sv-ttk>=2.6.0", "tkinterdnd2>=0.3.0"]
 progress = ["tqdm>=4.66.0"]
-dependencies = ["tkinterdnd2>=0.3.0"]
+all = [
+    "pyzipper>=0.3.6",
+    "zstandard>=0.22.0",
+    "sv-ttk>=2.6.0",
+    "tkinterdnd2>=0.3.0",
+    "tqdm>=4.66.0",
+]
+dev = ["pytest>=7.0", "pytest-cov", "black", "flake8"]
 
 [project.scripts]
 forge = "forge.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["forge*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "forge.__version__"}
