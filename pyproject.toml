@@ -19,11 +19,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Development Status :: 4 - Beta",
-    "Environment :: Console",
-    "Environment :: X11 Applications :: Qt",
-    "Intended Audience :: Developers",
-    "Intended Audience :: System Administrators",
-    "Topic :: System :: Archiving :: Compression",
 ]
 dependencies = []  # all dependencies are optional
 dynamic = ["version"]
@@ -50,3 +45,11 @@ include = ["forge*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "forge.__version__"}
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "--tb=short --strict-markers"
