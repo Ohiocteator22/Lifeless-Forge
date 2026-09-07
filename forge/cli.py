@@ -7,43 +7,113 @@ import tempfile
 import shutil
 import time
 from forge.core import generate_zip, generate_batch, extract_archive, print_stats, cli_info as core_info
-from forge.utils import format_size, parse_size_string, get_progress_printer, format_time
+from forge.utils import format_size, parse_size_string, get_progress_printer, format_time, normalize_format, normalize_algorithm
+
+# ----------------------------------------------------------------------
+# Validate CLI arguments for compatibility
+# ----------------------------------------------------------------------
+
+def validate_generate_args(args):
+    """Raise ValueError if incompatible arguments are used."""
+    # Encryption requires ZIP-based format
+    if args.password and args.algo in ("lzma", "zstd"):
+        raise ValueError("Encryption is not supported for LZMA or Zstandard compression.")
+    # Office formats only work with DEFLATE
+    if args.format in ("pptx", "docx", "xlsx") and args.algo != "deflate":
+        raise ValueError(f"Office format '{args.format}' only supports DEFLATE compression.")
+    # Store mode only valid with ZIP and DEFLATE
+    if args.store and (args.format != "zip" or args.algo != "deflate"):
+        raise ValueError("--store (no compression) is only valid with format=zip and algo=deflate.")
+    # Legacy crypto only with ZIP
+    if args.legacy and args.format != "zip":
+        raise ValueError("--legacy (ZipCrypto) is only valid with format=zip.")
+    # If source is provided, size is ignored – warn but not error
+    if args.input and args.size is not None:
+        # We can warn, but not error; it's harmless
+        pass
+
+def validate_batch_args(args):
+    """Validate batch arguments."""
+    if args.password and args.algo in ("lzma", "zstd"):
+        raise ValueError("Encryption is not supported for LZMA or Zstandard compression in batch.")
+    if args.format in ("pptx", "docx", "xlsx") and args.algo != "deflate":
+        raise ValueError(f"Office format '{args.format}' only supports DEFLATE compression.")
+    if args.store and (args.format != "zip" or args.algo != "deflate"):
+        raise ValueError("--store is only valid with format=zip and algo=deflate in batch.")
+    if args.legacy and args.format != "zip":
+        raise ValueError("--legacy is only valid with format=zip in batch.")
+
+def validate_compress_args(args):
+    """Validate compress command arguments."""
+    if args.password and args.algo in ("lzma", "zstd"):
+        raise ValueError("Encryption is not supported for LZMA or Zstandard compression.")
+    if args.store and args.algo != "deflate":
+        raise ValueError("--store is only valid with algo=deflate.")
+    if args.legacy and args.algo != "deflate":
+        raise ValueError("--legacy is only valid with algo=deflate.")
+
+# ----------------------------------------------------------------------
+# CLI handler functions
+# ----------------------------------------------------------------------
 
 def cli_generate(args):
+    # Normalize values
+    args.format = normalize_format(args.format)
+    args.algo = normalize_algorithm(args.algo)
+    # Validate
+    validate_generate_args(args)
+
     progress = get_progress_printer(enable=not args.no_progress, total=args.size)
-    stats = generate_zip(
-        output=args.output,
-        extracted_mb=args.size,
-        pattern=args.pattern,
-        compression=not args.store,
-        password=args.password,
-        progress_callback=progress,
-        legacy_crypto=args.legacy,
-        fmt=args.format,
-        algo=args.algo,
-        source=getattr(args, 'input', None),
-    )
-    print_stats(stats)
-    if args.password:
-        if args.legacy:
-            print("Note: Used legacy ZipCrypto (Windows native).")
-        else:
-            print("Note: Used AES-256 encryption.")
+    try:
+        stats = generate_zip(
+            output=args.output,
+            extracted_mb=args.size,
+            pattern=args.pattern,
+            compression=not args.store,
+            password=args.password,
+            progress_callback=progress,
+            legacy_crypto=args.legacy,
+            fmt=args.format,
+            algo=args.algo,
+            source=getattr(args, 'input', None),
+        )
+        print_stats(stats)
+        if args.password:
+            if args.legacy:
+                print("Note: Used legacy ZipCrypto (Windows native).")
+            else:
+                print("Note: Used AES-256 encryption.")
+    except (ValueError, ImportError, FileNotFoundError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 def cli_batch(args):
+    # Normalize values
+    args.format = normalize_format(args.format)
+    args.algo = normalize_algorithm(args.algo)
+    validate_batch_args(args)
+
     tasks = []
     if args.batch_config:
-        with open(args.batch_config, 'r') as f:
-            data = json.load(f)
-            tasks = data if isinstance(data, list) else [data]
+        try:
+            with open(args.batch_config, 'r') as f:
+                data = json.load(f)
+                tasks = data if isinstance(data, list) else [data]
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"Error reading batch config: {e}", file=sys.stderr)
+            sys.exit(1)
     elif args.series:
-        sizes = [s.strip() for s in args.series.split(',')]
+        sizes = [s.strip() for s in args.series.split(',') if s.strip()]
         base_output = args.output_pattern or "batch_{size}.zip"
         fmt = args.format or "zip"
         algo = args.algo or "deflate"
         for s in sizes:
-            size_mb = parse_size_string(s)
-            output_name = base_output.replace("{size}", str(s)).replace("{size_mb}", str(size_mb))
+            try:
+                size_mb = parse_size_string(s)
+            except ValueError as e:
+                print(f"Error parsing size '{s}': {e}", file=sys.stderr)
+                sys.exit(1)
+            output_name = base_output.replace("{size}", s).replace("{size_mb}", str(size_mb))
             task = {
                 "size": size_mb,
                 "output": output_name,
@@ -57,14 +127,20 @@ def cli_batch(args):
             if args.input:
                 task["source"] = args.input
             tasks.append(task)
+    else:
+        print("No tasks defined. Use --series or --batch-config.", file=sys.stderr)
+        sys.exit(1)
+
     if not tasks:
-        print("No tasks defined. Use --series or --batch-config.")
-        return
+        print("No tasks defined.", file=sys.stderr)
+        sys.exit(1)
+
     print(f"Batch: {len(tasks)} tasks")
     def batch_progress(current, total, msg):
         print(f"\rBatch progress: {current+1}/{total} - {msg}", end="")
         if current == total - 1:
             print()
+
     results = []
     for idx, task in enumerate(tasks):
         batch_progress(idx, len(tasks), f"Task {idx+1}")
@@ -81,20 +157,30 @@ def cli_batch(args):
         }
         params.update(task)
         if isinstance(params["size"], str):
-            params["size"] = parse_size_string(params["size"])
-        stats = generate_zip(
-            output=params["output"],
-            extracted_mb=params["size"],
-            pattern=params["pattern"],
-            compression=params["compression"],
-            password=params["password"],
-            progress_callback=None,
-            legacy_crypto=params["legacy"],
-            fmt=params.get("format", "zip"),
-            algo=params.get("algo", "deflate"),
-            source=params.get("source"),
-        )
-        results.append(stats)
+            try:
+                params["size"] = parse_size_string(params["size"])
+            except ValueError as e:
+                print(f"Error parsing size in task {idx+1}: {e}", file=sys.stderr)
+                sys.exit(1)
+
+        try:
+            stats = generate_zip(
+                output=params["output"],
+                extracted_mb=params["size"],
+                pattern=params["pattern"],
+                compression=params["compression"],
+                password=params["password"],
+                progress_callback=None,
+                legacy_crypto=params["legacy"],
+                fmt=params.get("format", "zip"),
+                algo=params.get("algo", "deflate"),
+                source=params.get("source"),
+            )
+            results.append(stats)
+        except Exception as e:
+            print(f"\nError in task {idx+1}: {e}", file=sys.stderr)
+            sys.exit(1)
+
     print("\n=== Batch Summary ===")
     for r in results:
         print(f"{os.path.basename(r['output'])} ({r['format'].upper()}, {r['algo'].upper()}): {format_size(r['extracted_bytes'])} → {format_size(r['compressed_bytes'])} (ratio {r['ratio']:.2f}x)")
@@ -108,55 +194,69 @@ def cli_extract(args):
         print("-" * 40)
         print(f"Time taken: {format_time(elapsed)}")
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
 def cli_compress(args):
+    # Normalize
+    args.algo = normalize_algorithm(args.algo)
+    validate_compress_args(args)
+
     sources = args.input
     output = args.output
 
-    # If only one source and it's a folder, use it directly
     if len(sources) == 1 and os.path.isdir(sources[0]):
         source = sources[0]
-        stats = generate_zip(
-            output=output,
-            extracted_mb=None,
-            pattern="",
-            compression=not args.store,
-            password=args.password,
-            progress_callback=None,
-            legacy_crypto=args.legacy,
-            fmt="zip",  # not important for folder with algo
-            algo=args.algo,
-            source=source,
-        )
-        print_stats(stats)
+        try:
+            stats = generate_zip(
+                output=output,
+                extracted_mb=None,
+                pattern="",
+                compression=not args.store,
+                password=args.password,
+                progress_callback=None,
+                legacy_crypto=args.legacy,
+                fmt="zip",  # always ZIP for compress command
+                algo=args.algo,
+                source=source,
+            )
+            print_stats(stats)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
         return
 
-    # Multiple sources: create a temp dir and copy everything
     with tempfile.TemporaryDirectory() as tmpdir:
         for src in sources:
             if not os.path.exists(src):
-                print(f"Warning: {src} not found, skipping.")
+                print(f"Warning: {src} not found, skipping.", file=sys.stderr)
                 continue
             dest = os.path.join(tmpdir, os.path.basename(src))
             if os.path.isdir(src):
                 shutil.copytree(src, dest)
             else:
                 shutil.copy2(src, dest)
-        stats = generate_zip(
-            output=output,
-            extracted_mb=None,
-            pattern="",
-            compression=not args.store,
-            password=args.password,
-            progress_callback=None,
-            legacy_crypto=args.legacy,
-            fmt="zip",
-            algo=args.algo,
-            source=tmpdir,
-        )
-        print_stats(stats)
+        try:
+            stats = generate_zip(
+                output=output,
+                extracted_mb=None,
+                pattern="",
+                compression=not args.store,
+                password=args.password,
+                progress_callback=None,
+                legacy_crypto=args.legacy,
+                fmt="zip",
+                algo=args.algo,
+                source=tmpdir,
+            )
+            print_stats(stats)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+
+# ----------------------------------------------------------------------
+# Parser setup
+# ----------------------------------------------------------------------
 
 def setup_cli_parser():
     parser = argparse.ArgumentParser(
