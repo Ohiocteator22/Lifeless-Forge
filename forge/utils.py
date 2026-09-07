@@ -1,7 +1,9 @@
 # forge/utils.py
 import re
+from typing import Optional, Callable, Any
 
-def format_size(size):
+def format_size(size: float) -> str:
+    """Convert bytes to human-readable string."""
     units = ["B", "KB", "MB", "GB"]
     for unit in units:
         if size < 1024:
@@ -9,7 +11,11 @@ def format_size(size):
         size /= 1024
     return f"{size:.2f} TB"
 
-def parse_size_string(s):
+def parse_size_string(s: str) -> int:
+    """
+    Parse a size string like '10MB', '1GB', '500K', or just a number (treated as MB).
+    Returns size in MB (as int).
+    """
     s = str(s).strip().upper()
     match = re.match(r"([\d.]+)\s*(?:([KMGT])B?)?", s)
     if not match:
@@ -19,20 +25,26 @@ def parse_size_string(s):
     multipliers = {"K": 1/1024, "M": 1, "G": 1024, "T": 1024*1024}
     return int(val * multipliers.get(unit, 1))
 
-def get_progress_printer(enable=False, total=None, label="Writing"):
+def get_progress_printer(enable: bool = False, total: Optional[int] = None, label: str = "Writing") -> Callable[[int, int], None]:
+    """
+    Return a progress callback function.
+    If enable is False, returns a no-op function.
+    If tqdm is available, uses it; otherwise falls back to a simple percentage printer.
+    """
     if not enable:
         return lambda current, total: None
+
     try:
         from tqdm import tqdm
         pbar = tqdm(total=total, unit="MB", desc=label, leave=False)
-        def update(current, total):
+        def update(current: int, total: int) -> None:
             pbar.update(current - pbar.n)
             if current >= total:
                 pbar.close()
         return update
     except ImportError:
         last = [0]
-        def update(current, total):
+        def update(current: int, total: int) -> None:
             percent = int(current / total * 100) if total else 0
             if percent - last[0] >= 10:
                 print(f"{label}: {percent}%", end="\r")
@@ -41,8 +53,7 @@ def get_progress_printer(enable=False, total=None, label="Writing"):
                 print(f"{label}: 100%")
         return update
 
-# ---------- NEW: Time formatter ----------
-def format_time(seconds):
+def format_time(seconds: float) -> str:
     """Convert seconds to human-readable string."""
     if seconds < 60:
         return f"{seconds:.2f} seconds"
@@ -51,11 +62,8 @@ def format_time(seconds):
         return f"{mins}m {secs}s"
     hrs, mins = divmod(mins, 60)
     return f"{hrs}h {mins}m {secs}s"
-# ----------------------------------------------------------------------
-# CLI value normalization
-# ----------------------------------------------------------------------
 
-def normalize_format(fmt):
+def normalize_format(fmt: str) -> str:
     """Normalize format string to lowercase; raise if unknown."""
     fmt = fmt.lower().strip()
     valid = {"zip", "pptx", "docx", "xlsx"}
@@ -63,7 +71,7 @@ def normalize_format(fmt):
         raise ValueError(f"Unknown format: {fmt}. Allowed: {', '.join(valid)}")
     return fmt
 
-def normalize_algorithm(algo):
+def normalize_algorithm(algo: str) -> str:
     """Normalize algorithm string to lowercase; raise if unknown."""
     algo = algo.lower().strip()
     valid = {"deflate", "lzma", "zstd"}
