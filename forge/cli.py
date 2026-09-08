@@ -30,6 +30,7 @@ from forge.utils import (
     normalize_algorithm,
 )
 from forge.benchmark import run_benchmark
+from forge.smart_suggest import suggest_algorithm, print_suggestion
 from forge.exceptions import ForgeError
 
 logger = logging.getLogger(__name__)
@@ -232,7 +233,6 @@ def cli_compress(args: argparse.Namespace) -> None:
     sources = args.input
     output = args.output
 
-    # Single folder – compress directly
     if len(sources) == 1 and os.path.isdir(sources[0]):
         source = sources[0]
         try:
@@ -254,7 +254,6 @@ def cli_compress(args: argparse.Namespace) -> None:
             sys.exit(1)
         return
 
-    # Multiple sources: copy everything to a temp dir and compress as a folder
     with tempfile.TemporaryDirectory() as tmpdir:
         for src in sources:
             if not os.path.exists(src):
@@ -295,6 +294,16 @@ def cli_benchmark(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def cli_suggest(args: argparse.Namespace) -> None:
+    """Handle 'forge suggest'."""
+    try:
+        result = suggest_algorithm(args.path)
+        print_suggestion(result, args.path)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 # ----------------------------------------------------------------------
 # Parser setup
 # ----------------------------------------------------------------------
@@ -318,7 +327,7 @@ def setup_cli_parser() -> argparse.ArgumentParser:
     gen.add_argument("--format", choices=["zip", "pptx", "docx", "xlsx"], default="zip",
                      help="Output format (ZIP or Office document)")
     gen.add_argument("--algo", choices=["deflate", "lzma", "zstd", "lz4", "brotli"], default="deflate",
-                     help="Compression algorithm: deflate (ZIP), lzma (XZ), zstd (Zstandard), lz4")
+                     help="Compression algorithm")
     gen.add_argument("--store", action="store_true",
                      help="Disable compression (store only – ZIP format only)")
     gen.add_argument("--password", help="Encryption password (ZIP only)")
@@ -339,7 +348,7 @@ def setup_cli_parser() -> argparse.ArgumentParser:
                        help="Pattern for generated data (if no --input)")
     batch.add_argument("--format", choices=["zip", "pptx", "docx", "xlsx"], default="zip",
                        help="Output format for all tasks")
-    batch.add_argument("--algo", choices=["deflate", "lzma", "zstd", "lz4"], default="deflate",
+    batch.add_argument("--algo", choices=["deflate", "lzma", "zstd", "lz4", "brotli"], default="deflate",
                        help="Compression algorithm for all tasks")
     batch.add_argument("--store", action="store_true",
                        help="Disable compression (store only – ZIP format only)")
@@ -366,7 +375,7 @@ def setup_cli_parser() -> argparse.ArgumentParser:
                       help="Input files/folders (can specify multiple)")
     comp.add_argument("-o", "--output", required=True,
                       help="Output archive filename (extension determines format)")
-    comp.add_argument("--algo", choices=["deflate", "lzma", "zstd", "lz4"], default="deflate",
+    comp.add_argument("--algo", choices=["deflate", "lzma", "zstd", "lz4", "brotli"], default="deflate",
                       help="Compression algorithm")
     comp.add_argument("--store", action="store_true",
                       help="Store without compression (ZIP only)")
@@ -383,5 +392,10 @@ def setup_cli_parser() -> argparse.ArgumentParser:
     bench.add_argument("--pattern", default="A", help="Character pattern for test data (default: 'A')")
     bench.add_argument("--json", action="store_true", help="Output results as JSON")
     bench.set_defaults(func=cli_benchmark)
+
+    # --- Suggest ---------------------------------------------------------
+    suggest = subparsers.add_parser("suggest", help="Recommend the best algorithm for a file/folder")
+    suggest.add_argument("path", help="Path to file or folder to analyze")
+    suggest.set_defaults(func=cli_suggest)
 
     return parser
