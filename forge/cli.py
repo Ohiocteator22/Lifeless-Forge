@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 # ----------------------------------------------------------------------
 def validate_generate_args(args: argparse.Namespace) -> None:
     """Check for incompatible combinations in 'generate'."""
-    if args.password and args.algo in ("lzma", "zstd", "lz4"):
+    if args.password and args.algo in ("lzma", "zstd", "lz4", "brotli"):
         raise ValueError(f"Encryption is not supported for {args.algo.upper()} compression.")
     if args.format in ("pptx", "docx", "xlsx") and args.algo != "deflate":
         raise ValueError(f"Office format '{args.format}' only supports DEFLATE compression.")
@@ -52,7 +52,7 @@ def validate_generate_args(args: argparse.Namespace) -> None:
 
 def validate_batch_args(args: argparse.Namespace) -> None:
     """Check for incompatible combinations in 'batch'."""
-    if args.password and args.algo in ("lzma", "zstd", "lz4"):
+    if args.password and args.algo in ("lzma", "zstd", "lz4", "brotli"):
         raise ValueError(f"Encryption is not supported for {args.algo.upper()} compression in batch.")
     if args.format in ("pptx", "docx", "xlsx") and args.algo != "deflate":
         raise ValueError(f"Office format '{args.format}' only supports DEFLATE compression.")
@@ -64,7 +64,7 @@ def validate_batch_args(args: argparse.Namespace) -> None:
 
 def validate_compress_args(args: argparse.Namespace) -> None:
     """Check for incompatible combinations in 'compress'."""
-    if args.password and args.algo in ("lzma", "zstd", "lz4"):
+    if args.password and args.algo in ("lzma", "zstd", "lz4", "brotli"):
         raise ValueError(f"Encryption is not supported for {args.algo.upper()} compression.")
     if args.store and args.algo != "deflate":
         raise ValueError("--store is only valid with algo=deflate.")
