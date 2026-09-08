@@ -26,7 +26,7 @@ def run_benchmark(size_mb: int = 10, pattern: str = "A", json_output: bool = Fal
         tmp.flush()
 
     results = []
-    algorithms = ["deflate", "lzma", "zstd"]
+    algorithms = ["deflate", "lzma", "zstd", "lz4"]
     formats = ["zip", "xz", "zst"]  # mapping for output extension
 
     for algo in algorithms:
