@@ -7,7 +7,7 @@ import tempfile
 import shutil
 import time
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 from forge.core import (
     generate_zip,
@@ -30,12 +30,8 @@ from forge.exceptions import ForgeError
 
 logger = logging.getLogger(__name__)
 
-# ----------------------------------------------------------------------
-# Validate CLI arguments for compatibility
-# ----------------------------------------------------------------------
-
-def validate_generate_args(args: argparse.Namespace) -> None:
-    """Raise ValueError if incompatible arguments are used."""
+# ---- validation functions ----
+def validate_generate_args(args):
     if args.password and args.algo in ("lzma", "zstd"):
         raise ValueError("Encryption is not supported for LZMA or Zstandard compression.")
     if args.format in ("pptx", "docx", "xlsx") and args.algo != "deflate":
@@ -44,10 +40,8 @@ def validate_generate_args(args: argparse.Namespace) -> None:
         raise ValueError("--store (no compression) is only valid with format=zip and algo=deflate.")
     if args.legacy and args.format != "zip":
         raise ValueError("--legacy (ZipCrypto) is only valid with format=zip.")
-    # If source is provided, size is ignored – warn but not error; we can leave it.
 
-def validate_batch_args(args: argparse.Namespace) -> None:
-    """Validate batch arguments."""
+def validate_batch_args(args):
     if args.password and args.algo in ("lzma", "zstd"):
         raise ValueError("Encryption is not supported for LZMA or Zstandard compression in batch.")
     if args.format in ("pptx", "docx", "xlsx") and args.algo != "deflate":
@@ -57,8 +51,7 @@ def validate_batch_args(args: argparse.Namespace) -> None:
     if args.legacy and args.format != "zip":
         raise ValueError("--legacy is only valid with format=zip in batch.")
 
-def validate_compress_args(args: argparse.Namespace) -> None:
-    """Validate compress command arguments."""
+def validate_compress_args(args):
     if args.password and args.algo in ("lzma", "zstd"):
         raise ValueError("Encryption is not supported for LZMA or Zstandard compression.")
     if args.store and args.algo != "deflate":
@@ -66,11 +59,8 @@ def validate_compress_args(args: argparse.Namespace) -> None:
     if args.legacy and args.algo != "deflate":
         raise ValueError("--legacy is only valid with algo=deflate.")
 
-# ----------------------------------------------------------------------
-# CLI handler functions
-# ----------------------------------------------------------------------
-
-def cli_generate(args: argparse.Namespace) -> None:
+# ---- CLI handlers ----
+def cli_generate(args):
     args.format = normalize_format(args.format)
     args.algo = normalize_algorithm(args.algo)
     validate_generate_args(args)
@@ -100,12 +90,12 @@ def cli_generate(args: argparse.Namespace) -> None:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-def cli_batch(args: argparse.Namespace) -> None:
+def cli_batch(args):
     args.format = normalize_format(args.format)
     args.algo = normalize_algorithm(args.algo)
     validate_batch_args(args)
 
-    tasks: List[Dict[str, Any]] = []
+    tasks = []
     if args.batch_config:
         try:
             with open(args.batch_config, 'r') as f:
@@ -148,7 +138,7 @@ def cli_batch(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     print(f"Batch: {len(tasks)} tasks")
-    def batch_progress(current: int, total: int, msg: str) -> None:
+    def batch_progress(current, total, msg):
         print(f"\rBatch progress: {current+1}/{total} - {msg}", end="")
         if current == total - 1:
             print()
@@ -197,7 +187,7 @@ def cli_batch(args: argparse.Namespace) -> None:
     for r in results:
         print(f"{os.path.basename(r['output'])} ({r['format'].upper()}, {r['algo'].upper()}): {format_size(r['extracted_bytes'])} → {format_size(r['compressed_bytes'])} (ratio {r['ratio']:.2f}x)")
 
-def cli_extract(args: argparse.Namespace) -> None:
+def cli_extract(args):
     start = time.time()
     try:
         out_dir = extract_archive(args.archive, args.password, args.output_dir)
@@ -209,7 +199,7 @@ def cli_extract(args: argparse.Namespace) -> None:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-def cli_compress(args: argparse.Namespace) -> None:
+def cli_compress(args):
     args.algo = normalize_algorithm(args.algo)
     validate_compress_args(args)
 
@@ -226,7 +216,7 @@ def cli_compress(args: argparse.Namespace) -> None:
                 compression=not args.store,
                 password=args.password,
                 legacy_crypto=args.legacy,
-                fmt="zip",  # always ZIP for compress command
+                fmt="zip",
                 algo=args.algo,
                 source=source,
             )
@@ -237,7 +227,6 @@ def cli_compress(args: argparse.Namespace) -> None:
             sys.exit(1)
         return
 
-    # Multiple sources: create a temp dir and copy everything
     with tempfile.TemporaryDirectory() as tmpdir:
         for src in sources:
             if not os.path.exists(src):
@@ -266,7 +255,7 @@ def cli_compress(args: argparse.Namespace) -> None:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
 
-def cli_benchmark(args: argparse.Namespace) -> None:
+def cli_benchmark(args):
     try:
         result = run_benchmark(size_mb=args.size, pattern=args.pattern, json_output=args.json)
         if args.json:
@@ -275,11 +264,8 @@ def cli_benchmark(args: argparse.Namespace) -> None:
         print(f"Benchmark failed: {e}", file=sys.stderr)
         sys.exit(1)
 
-# ----------------------------------------------------------------------
-# Parser setup
-# ----------------------------------------------------------------------
-
-def setup_cli_parser() -> argparse.ArgumentParser:
+# ---- parser ----
+def setup_cli_parser():
     parser = argparse.ArgumentParser(
         description="Lifeless-Forge – Compression Tool",
         epilog="Use -h for more details on each subcommand."
