@@ -317,7 +317,7 @@ def setup_cli_parser() -> argparse.ArgumentParser:
                      help="Character pattern (used only if no --input)")
     gen.add_argument("--format", choices=["zip", "pptx", "docx", "xlsx"], default="zip",
                      help="Output format (ZIP or Office document)")
-    gen.add_argument("--algo", choices=["deflate", "lzma", "zstd", "lz4"], default="deflate",
+    gen.add_argument("--algo", choices=["deflate", "lzma", "zstd", "lz4", "brotli"], default="deflate",
                      help="Compression algorithm: deflate (ZIP), lzma (XZ), zstd (Zstandard), lz4")
     gen.add_argument("--store", action="store_true",
                      help="Disable compression (store only – ZIP format only)")
