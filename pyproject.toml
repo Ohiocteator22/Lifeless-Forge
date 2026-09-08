@@ -44,6 +44,16 @@ all = [
     "tkinterdnd2>=0.3.0",
     "tqdm>=4.66.0",
 ]
+brotli = ["brotli>=1.1.0"]
+all = [
+    "pyzipper>=0.3.6",
+    "zstandard>=0.22.0",
+    "lz4>=4.3.2",
+    "brotli>=1.1.0",
+    "sv-ttk>=2.6.0",
+    "tkinterdnd2>=0.3.0",
+    "tqdm>=4.66.0",
+]
 dev = ["pytest>=7.0", "pytest-cov", "black", "flake8"]
 
 [project.scripts]
