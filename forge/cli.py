@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 
 # ---- validation functions ----
 def validate_generate_args(args):
-    if args.password and args.algo in ("lzma", "zstd"):
-        raise ValueError("Encryption is not supported for LZMA or Zstandard compression.")
+    if args.password and args.algo in ("lzma", "zstd", "lz4"):
+        raise ValueError("Encryption is not supported for LZMA, Zstandard, or LZ4 compression.")
     if args.format in ("pptx", "docx", "xlsx") and args.algo != "deflate":
         raise ValueError(f"Office format '{args.format}' only supports DEFLATE compression.")
     if args.store and (args.format != "zip" or args.algo != "deflate"):
@@ -42,8 +42,8 @@ def validate_generate_args(args):
         raise ValueError("--legacy (ZipCrypto) is only valid with format=zip.")
 
 def validate_batch_args(args):
-    if args.password and args.algo in ("lzma", "zstd"):
-        raise ValueError("Encryption is not supported for LZMA or Zstandard compression in batch.")
+    if args.password and args.algo in ("lzma", "zstd", "lz4"):
+        raise ValueError("Encryption is not supported for LZMA, Zstandard, or LZ4 compression in batch.")
     if args.format in ("pptx", "docx", "xlsx") and args.algo != "deflate":
         raise ValueError(f"Office format '{args.format}' only supports DEFLATE compression.")
     if args.store and (args.format != "zip" or args.algo != "deflate"):
@@ -52,8 +52,8 @@ def validate_batch_args(args):
         raise ValueError("--legacy is only valid with format=zip in batch.")
 
 def validate_compress_args(args):
-    if args.password and args.algo in ("lzma", "zstd"):
-        raise ValueError("Encryption is not supported for LZMA or Zstandard compression.")
+    if args.password and args.algo in ("lzma", "zstd", "lz4"):
+        raise ValueError("Encryption is not supported for LZMA, Zstandard, or LZ4 compression.")
     if args.store and args.algo != "deflate":
         raise ValueError("--store is only valid with algo=deflate.")
     if args.legacy and args.algo != "deflate":
@@ -283,8 +283,8 @@ def setup_cli_parser():
                      help="Character pattern (used only if no --input)")
     gen.add_argument("--format", choices=["zip", "pptx", "docx", "xlsx"], default="zip",
                      help="Output format (ZIP or Office document)")
-    gen.add_argument("--algo", choices=["deflate", "lzma", "zstd"], default="deflate",
-                     help="Compression algorithm: deflate (ZIP), lzma (XZ), zstd (Zstandard)")
+    gen.add_argument("--algo", choices=["deflate", "lzma", "zstd", "lz4"], default="deflate",
+                     help="Compression algorithm: deflate (ZIP), lzma (XZ), zstd (Zstandard), lz4 (LZ4)")
     gen.add_argument("--store", action="store_true",
                      help="Disable compression (store only – ZIP format only)")
     gen.add_argument("--password", help="Encryption password (ZIP only)")
@@ -305,7 +305,7 @@ def setup_cli_parser():
                        help="Pattern for generated data (if no --input)")
     batch.add_argument("--format", choices=["zip", "pptx", "docx", "xlsx"], default="zip",
                        help="Output format for all tasks")
-    batch.add_argument("--algo", choices=["deflate", "lzma", "zstd"], default="deflate",
+    batch.add_argument("--algo", choices=["deflate", "lzma", "zstd", "lz4"], default="deflate",
                        help="Compression algorithm for all tasks")
     batch.add_argument("--store", action="store_true",
                        help="Disable compression (store only – ZIP format only)")
@@ -332,7 +332,7 @@ def setup_cli_parser():
                       help="Input files/folders (can specify multiple)")
     comp.add_argument("-o", "--output", required=True,
                       help="Output archive filename (extension determines format)")
-    comp.add_argument("--algo", choices=["deflate", "lzma", "zstd"], default="deflate",
+    comp.add_argument("--algo", choices=["deflate", "lzma", "zstd", "lz4"], default="deflate",
                       help="Compression algorithm")
     comp.add_argument("--store", action="store_true",
                       help="Store without compression (ZIP only)")
