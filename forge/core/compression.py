@@ -1,0 +1,95 @@
+# forge/core/compression.py
+import os
+import tempfile
+import time
+import logging
+from typing import Dict, Any
+from forge.core.base import CompressionOptions, get_total_size, MAX_SIZE_MB, CHUNK_SIZE
+from forge.core.algorithms import deflate, lzma, zstd, lz4
+from forge.exceptions import ConfigurationError
+
+logger = logging.getLogger(__name__)
+
+def generate_zip(options: CompressionOptions) -> Dict[str, Any]:
+    start_time = time.time()
+    logger.info(f"Starting generation: output={options.output}, format={options.fmt}, algo={options.algo}")
+
+    # ----- Size validation -----
+    if options.extracted_mb is not None:
+        if not isinstance(options.extracted_mb, (int, float)) or options.extracted_mb <= 0:
+            raise ConfigurationError(f"Invalid extracted_mb: {options.extracted_mb} (must be > 0)")
+        if options.extracted_mb > MAX_SIZE_MB:
+            raise ConfigurationError(
+                f"Requested size ({options.extracted_mb} MB) exceeds maximum allowed ({MAX_SIZE_MB} MB). "
+                "Set FORGE_MAX_SIZE_MB environment variable to increase."
+            )
+
+    # ----- Encryption validation -----
+    if options.password is not None:
+        if options.algo in ("lzma", "zstd", "lz4"):
+            raise ConfigurationError("Encryption is not supported for LZMA, Zstandard, or LZ4 compression.")
+        try:
+            import pyzipper
+        except ImportError:
+            raise ConfigurationError("pyzipper is required for encryption. Please install: pip install pyzipper")
+
+    # ----- Input validation -----
+    source = options.source
+    if source is not None:
+        if not os.path.exists(source):
+            raise FileNotFoundError(f"Input source not found: {source}")
+        if options.fmt in ("pptx", "docx", "xlsx") and os.path.isdir(source):
+            raise ConfigurationError(f"Office format '{options.fmt}' does not support folders.")
+        target_bytes = get_total_size(source)
+        temp_name = None
+    else:
+        if options.extracted_mb is None:
+            raise ConfigurationError("Either source or extracted_mb must be provided.")
+        target_bytes = options.extracted_mb * 1024 * 1024
+        chunk = (options.pattern * (1024 * 1024)).encode()
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            temp_name = tmp.name
+            written = 0
+            if options.progress_callback:
+                options.progress_callback(0, options.extracted_mb)
+            while written < target_bytes:
+                remaining = target_bytes - written
+                write_size = min(len(chunk), remaining)
+                tmp.write(chunk[:write_size])
+                written += write_size
+                if options.progress_callback:
+                    options.progress_callback(written // (1024*1024), options.extracted_mb)
+        logger.debug(f"Generated temporary file: {temp_name}")
+
+    # ---- Dispatch to algorithm ----
+    if options.algo == "deflate":
+        compressed_size = deflate.compress_deflate(options, temp_name, source, target_bytes)
+        format_name = options.fmt if options.fmt != "zip" else "zip"
+        algo_name = "deflate"
+    elif options.algo == "lzma":
+        compressed_size = lzma.compress_lzma(options, temp_name, source, target_bytes)
+        format_name = "xz" if not (source and os.path.isdir(source)) else "tar.xz"
+        algo_name = "lzma"
+    elif options.algo == "zstd":
+        compressed_size = zstd.compress_zstd(options, temp_name, source, target_bytes)
+        format_name = "zst" if not (source and os.path.isdir(source)) else "tar.zst"
+        algo_name = "zstd"
+    elif options.algo == "lz4":
+        compressed_size = lz4.compress_lz4(options, temp_name, source, target_bytes)
+        format_name = "lz4" if not (source and os.path.isdir(source)) else "tar.lz4"
+        algo_name = "lz4"
+    else:
+        raise ConfigurationError(f"Unsupported algorithm: {options.algo}")
+
+    ratio = target_bytes / compressed_size if compressed_size else 0
+    elapsed = time.time() - start_time
+    logger.info(f"{algo_name.upper()} compression finished in {elapsed:.2f}s, ratio {ratio:.2f}x")
+    return {
+        "output": options.output,
+        "extracted_bytes": target_bytes,
+        "compressed_bytes": compressed_size,
+        "ratio": ratio,
+        "format": format_name,
+        "algo": algo_name,
+        "time": elapsed
+    }
