@@ -38,7 +38,7 @@ def generate_zip(options: CompressionOptions) -> Dict[str, Any]:
     # ----- 2. Encryption validation ---------------------------------------
     if options.password is not None:
         # Encryption is only supported for DEFLATE (ZIP) – not for LZMA, Zstd, LZ4
-        if options.algo in ("lzma", "zstd", "lz4"):
+        if options.algo in ("lzma", "zstd", "lz4", "brotli"):
             raise ConfigurationError(
                 f"Encryption is not supported for {options.algo.upper()} compression."
             )
@@ -98,6 +98,10 @@ def generate_zip(options: CompressionOptions) -> Dict[str, Any]:
         compressed_size = lz4.compress_lz4(options, temp_name, source, target_bytes)
         format_name = "lz4" if not (source and os.path.isdir(source)) else "tar.lz4"
         algo_name = "lz4"
+    elif options.algo == "brotli":
+    compressed_size = brotli.compress_brotli(options, temp_name, source, target_bytes)
+    format_name = "br" if not (source and os.path.isdir(source)) else "tar.br"
+    algo_name = "brotli"
     else:
         raise ConfigurationError(f"Unsupported algorithm: {options.algo}")
 
