@@ -239,15 +239,16 @@ def generate_zip(options: CompressionOptions) -> Dict[str, Any]:
             try:
                 with tarfile.open(temp_tar, "w") as tar:
                     tar.add(source, arcname=os.path.basename(source))
+                # Stream compress the tar
                 compressor = zstd.ZstdCompressor(level=3)
+                cobj = compressor.compressobj()
                 with open(temp_tar, "rb") as fin, open(options.output, "wb") as fout:
                     while True:
                         chunk = fin.read(CHUNK_SIZE)
                         if not chunk:
                             break
-                        compressed_chunk = compressor.compress(chunk)
-                        fout.write(compressed_chunk)
-                    fout.write(compressor.flush())
+                        fout.write(cobj.compress(chunk))
+                    fout.write(cobj.flush())
             finally:
                 if os.path.exists(temp_tar):
                     os.remove(temp_tar)
@@ -255,23 +256,25 @@ def generate_zip(options: CompressionOptions) -> Dict[str, Any]:
             if not options.output.lower().endswith(('.zst', '.zstd')):
                 options.output = options.output.rsplit('.', 1)[0] + '.zst'
             if source is not None and os.path.isfile(source):
+                compressor = zstd.ZstdCompressor(level=3)
+                cobj = compressor.compressobj()
                 with open(source, "rb") as fin, open(options.output, "wb") as fout:
-                    compressor = zstd.ZstdCompressor(level=3)
                     while True:
                         chunk = fin.read(CHUNK_SIZE)
                         if not chunk:
                             break
-                        fout.write(compressor.compress(chunk))
-                    fout.write(compressor.flush())
+                        fout.write(cobj.compress(chunk))
+                    fout.write(cobj.flush())
             else:
+                compressor = zstd.ZstdCompressor(level=3)
+                cobj = compressor.compressobj()
                 with open(temp_name, "rb") as fin, open(options.output, "wb") as fout:
-                    compressor = zstd.ZstdCompressor(level=3)
                     while True:
                         chunk = fin.read(CHUNK_SIZE)
                         if not chunk:
                             break
-                        fout.write(compressor.compress(chunk))
-                    fout.write(compressor.flush())
+                        fout.write(cobj.compress(chunk))
+                    fout.write(cobj.flush())
                 os.remove(temp_name)
         compressed_size = os.path.getsize(options.output)
         ratio = target_bytes / compressed_size if compressed_size else 0
@@ -465,14 +468,16 @@ def extract_archive(archive: str, password: Optional[str] = None, output_dir: Op
         with tempfile.NamedTemporaryFile(delete=False, suffix='.tar') as tmp:
             temp_tar = tmp.name
         try:
+            # Decompress streaming
             with open(archive, "rb") as fin, open(temp_tar, "wb") as fout:
                 decompressor = zstd.ZstdDecompressor()
+                dobj = decompressor.decompressobj()
                 while True:
                     chunk = fin.read(CHUNK_SIZE)
                     if not chunk:
                         break
-                    fout.write(decompressor.decompress(chunk))
-                fout.write(decompressor.flush())
+                    fout.write(dobj.decompress(chunk))
+                fout.write(dobj.flush())
             with tarfile.open(temp_tar, "r") as tar:
                 safe_extract_tar(tar, output_dir)
             return output_dir
@@ -511,14 +516,16 @@ def extract_archive(archive: str, password: Optional[str] = None, output_dir: Op
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
             temp_out = tmp.name
         try:
+            # Decompress streaming
             with open(archive, "rb") as fin, open(temp_out, "wb") as fout:
                 decompressor = zstd.ZstdDecompressor()
+                dobj = decompressor.decompressobj()
                 while True:
                     chunk = fin.read(CHUNK_SIZE)
                     if not chunk:
                         break
-                    fout.write(decompressor.decompress(chunk))
-                fout.write(decompressor.flush())
+                    fout.write(dobj.decompress(chunk))
+                fout.write(dobj.flush())
             if is_tar_file(temp_out):
                 with tarfile.open(temp_out, 'r') as tar:
                     safe_extract_tar(tar, output_dir)
