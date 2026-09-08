@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 import os
 import zipfile
-from forge.core import generate_zip, generate_batch, extract_archive
+from forge.core import generate_zip, generate_batch, extract_archive, CompressionOptions
 from forge.utils import format_size, parse_size_string, format_time
 from forge.config import load_config, save_config, detect_system_theme
 
@@ -261,7 +261,7 @@ def launch_gui():
                 if total:
                     progress_single["value"] = (cur/total)*100
                 root.update_idletasks()
-            stats = generate_zip(
+            opts = CompressionOptions(
                 output=output_var.get(),
                 extracted_mb=size_mb,
                 pattern=pattern_var.get(),
@@ -273,6 +273,7 @@ def launch_gui():
                 algo=algo_var.get(),
                 source=source,
             )
+            stats = generate_zip(opts)
             log_single_msg(f"Created: {stats['output']} ({stats['format'].upper()})")
             log_single_msg(f"Algorithm: {stats['algo'].upper()}")
             log_single_msg(f"Compressed: {format_size(stats['compressed_bytes'])}")
@@ -449,7 +450,6 @@ def launch_gui():
     tab_extra = ttk.Frame(nb)
     nb.add(tab_extra, text="Extract / Info")
 
-    # Helper to run extraction in a thread
     def do_extract_thread(archive, password, output_dir):
         try:
             out = extract_archive(archive, password, output_dir)
@@ -476,14 +476,13 @@ def launch_gui():
         pwd = None
         if archive.lower().endswith(('.zip', '.pptx', '.docx', '.xlsx')):
             pwd = simpledialog.askstring("Password", "Enter password (if needed):", show='*')
-            if pwd is None:  # user cancelled
+            if pwd is None:
                 return
 
         out_dir = filedialog.askdirectory(title="Select extraction directory")
         if not out_dir:
             return
 
-        # Run extraction in a thread to prevent GUI freezing
         threading.Thread(target=do_extract_thread, args=(archive, pwd, out_dir), daemon=True).start()
 
     def do_info_thread(archive):
