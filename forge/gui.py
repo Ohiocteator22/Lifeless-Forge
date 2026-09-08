@@ -20,6 +20,7 @@ from forge.core import (
 )
 from forge.utils import format_size, parse_size_string, format_time
 from forge.config import load_config, save_config, detect_system_theme
+from forge.smart_suggest import suggest_algorithm
 
 # Optional dependencies
 try:
@@ -245,7 +246,8 @@ def launch_gui() -> None:
     format_combo.grid(row=row, column=1, padx=5, pady=5, sticky="w")
     row += 1
 
-    # --- Algorithm ---
+    # --- Algorithm with Smart Suggest button ---
+    # Row for algorithm label and dropdown
     ttk.Label(tab_single, text="Algorithm:").grid(
         row=row, column=0, padx=5, pady=5, sticky="w"
     )
@@ -257,6 +259,34 @@ def launch_gui() -> None:
     )
     algo_combo.set("deflate")
     algo_combo.grid(row=row, column=1, padx=5, pady=5, sticky="w")
+
+    # Smart Suggest button – uses the current input path
+    def smart_suggest_single() -> None:
+        path = input_path_var.get().strip()
+        if not path:
+            messagebox.showerror("Error", "Please select a file or folder first.")
+            return
+        if not os.path.exists(path):
+            messagebox.showerror("Error", f"Path not found: {path}")
+            return
+        try:
+            result = suggest_algorithm(path)
+            algo_var.set(result["algorithm"])
+            msg = (
+                f"💡 Suggested: {result['algorithm'].upper()}\n"
+                f"Reason: {result['reason']}\n"
+                f"Expected ratio: {result['expected_ratio']}\n"
+                f"Speed: {result['speed']}"
+            )
+            messagebox.showinfo("Smart Suggest", msg)
+        except Exception as e:
+            messagebox.showerror("Smart Suggest Error", str(e))
+
+    ttk.Button(
+        tab_single,
+        text="🤖 Suggest",
+        command=smart_suggest_single
+    ).grid(row=row, column=2, padx=5, pady=5)
     row += 1
 
     # --- Output ---
@@ -473,7 +503,7 @@ def launch_gui() -> None:
     ).grid(row=br, column=1, padx=5, pady=5, sticky="w")
     br += 1
 
-    # --- Algorithm ---
+    # --- Algorithm with Smart Suggest button ---
     ttk.Label(tab_batch, text="Algorithm:").grid(
         row=br, column=0, padx=5, pady=5, sticky="w"
     )
@@ -485,6 +515,33 @@ def launch_gui() -> None:
     )
     batch_algo_combo.set("deflate")
     batch_algo_combo.grid(row=br, column=1, padx=5, pady=5, sticky="w")
+
+    def smart_suggest_batch() -> None:
+        path = batch_input_path_var.get().strip()
+        if not path:
+            messagebox.showerror("Error", "Please select a file or folder first.")
+            return
+        if not os.path.exists(path):
+            messagebox.showerror("Error", f"Path not found: {path}")
+            return
+        try:
+            result = suggest_algorithm(path)
+            batch_algo_var.set(result["algorithm"])
+            msg = (
+                f"💡 Suggested: {result['algorithm'].upper()}\n"
+                f"Reason: {result['reason']}\n"
+                f"Expected ratio: {result['expected_ratio']}\n"
+                f"Speed: {result['speed']}"
+            )
+            messagebox.showinfo("Smart Suggest", msg)
+        except Exception as e:
+            messagebox.showerror("Smart Suggest Error", str(e))
+
+    ttk.Button(
+        tab_batch,
+        text="🤖 Suggest",
+        command=smart_suggest_batch
+    ).grid(row=br, column=2, padx=5, pady=5)
     br += 1
 
     # --- Output pattern ---
@@ -711,7 +768,6 @@ def launch_gui() -> None:
             out = extract_archive(archive, password, output_dir)
             root.after(0, lambda: messagebox.showinfo("Success", f"Extracted to: {out}"))
         except Exception as e:
-            # Bind e as default argument to avoid late-binding issue
             root.after(0, lambda e=e: messagebox.showerror("Extraction Error", str(e)))
 
     def do_extract() -> None:
@@ -752,7 +808,6 @@ def launch_gui() -> None:
                 )
                 root.after(0, lambda: messagebox.showinfo("Archive Info", msg))
         except Exception as e:
-            # Bind e as default argument to avoid late-binding issue
             root.after(0, lambda e=e: messagebox.showerror("Info Error", str(e)))
 
     def do_info() -> None:
