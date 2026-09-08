@@ -8,7 +8,7 @@ import os
 import tempfile
 import tarfile
 import logging
-from forge.core.algorithms import deflate, lzma, zstd, lz4
+from forge.core.algorithms import deflate, lzma, zstd, lz4, brotli
 from forge.core.safe_extract import safe_extract_tar
 from forge.exceptions import ConfigurationError, ExtractionError
 
@@ -84,6 +84,12 @@ def extract_archive(archive: str, password: str = None, output_dir: str = None) 
     # ---- LZ4 / TAR.LZ4 --------------------------------------------------
     if archive.lower().endswith(('.lz4', '.tar.lz4')):
         lz4.decompress_lz4(archive, output_dir)
+        return output_dir
+
+
+    # ---- BR / TAR.BR --------------------------------------------------
+    if archive.lower().endswith(('.br', '.tar.br')):
+        brotli.decompress_brotli(archive, output_dir)
         return output_dir
 
     # ---- ZIP / Office (fallback) ----------------------------------------
