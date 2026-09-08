@@ -5,7 +5,12 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 import os
 import zipfile
-from forge.core import generate_zip, generate_batch, extract_archive, CompressionOptions
+from forge.core import (
+    generate_zip,
+    generate_batch,
+    extract_archive,
+    CompressionOptions,
+)
 from forge.utils import format_size, parse_size_string, format_time
 from forge.config import load_config, save_config, detect_system_theme
 
@@ -446,18 +451,27 @@ def launch_gui():
     tab_batch.grid_columnconfigure(1, weight=1)
     tab_batch.grid_rowconfigure(br-2, weight=1)
 
-    # ---- Tab 3: Extract / Info ----
+    # ---- Tab 3: Extract / Info (with drag‑and‑drop) ----
     tab_extra = ttk.Frame(nb)
     nb.add(tab_extra, text="Extract / Info")
 
-    def do_extract_thread(archive, password, output_dir):
-        try:
-            out = extract_archive(archive, password, output_dir)
-            root.after(0, lambda: messagebox.showinfo("Success", f"Extracted to: {out}"))
-        except Exception as e:
-            root.after(0, lambda: messagebox.showerror("Extraction Error", str(e)))
+    # Variables for extract tab
+    extract_path_var = tk.StringVar()
+    extract_password_var = tk.StringVar()
+    extract_output_var = tk.StringVar()
 
-    def do_extract():
+    # Row counter
+    er = 0
+
+    ttk.Label(tab_extra, text="Archive (drag & drop or browse):").grid(row=er, column=0, padx=5, pady=5, sticky="w")
+    extract_entry = ttk.Entry(tab_extra, textvariable=extract_path_var, width=50)
+    extract_entry.grid(row=er, column=1, padx=5, pady=5, sticky="ew")
+
+    if HAS_DND:
+        extract_entry.drop_target_register(DND_FILES)
+        extract_entry.dnd_bind('<<Drop>>', lambda e: handle_drop(e, extract_path_var))
+
+    def browse_extract_file():
         archive = filedialog.askopenfilename(
             title="Select archive",
             filetypes=[
@@ -471,21 +485,64 @@ def launch_gui():
                 ("XLSX files", "*.xlsx")
             ]
         )
-        if not archive: return
+        if archive:
+            extract_path_var.set(archive)
 
-        pwd = None
-        if archive.lower().endswith(('.zip', '.pptx', '.docx', '.xlsx')):
-            pwd = simpledialog.askstring("Password", "Enter password (if needed):", show='*')
-            if pwd is None:
-                return
+    ttk.Button(tab_extra, text="Browse", command=browse_extract_file).grid(row=er, column=2, padx=5, pady=5)
+    er += 1
 
-        out_dir = filedialog.askdirectory(title="Select extraction directory")
-        if not out_dir:
+    ttk.Label(tab_extra, text="Password (if needed):").grid(row=er, column=0, padx=5, pady=5, sticky="w")
+    ttk.Entry(tab_extra, textvariable=extract_password_var, show="*", width=30).grid(row=er, column=1, padx=5, pady=5, sticky="w")
+    er += 1
+
+    ttk.Label(tab_extra, text="Extract to:").grid(row=er, column=0, padx=5, pady=5, sticky="w")
+    ttk.Entry(tab_extra, textvariable=extract_output_var, width=40).grid(row=er, column=1, padx=5, pady=5, sticky="ew")
+
+    def browse_output_dir():
+        dir_path = filedialog.askdirectory()
+        if dir_path:
+            extract_output_var.set(dir_path)
+
+    ttk.Button(tab_extra, text="Browse", command=browse_output_dir).grid(row=er, column=2, padx=5, pady=5)
+    er += 1
+
+    # Buttons
+    btn_frame = ttk.Frame(tab_extra)
+    btn_frame.grid(row=er, column=0, columnspan=3, pady=10)
+
+    def do_extract_thread():
+        archive = extract_path_var.get().strip()
+        if not archive:
+            messagebox.showerror("Error", "Please select an archive.")
+            return
+        if not os.path.exists(archive):
+            messagebox.showerror("Error", f"Archive not found: {archive}")
             return
 
-        threading.Thread(target=do_extract_thread, args=(archive, pwd, out_dir), daemon=True).start()
+        password = extract_password_var.get() or None
+        output_dir = extract_output_var.get().strip()
+        if not output_dir:
+            output_dir = os.path.splitext(archive)[0] + "_extracted"
+            extract_output_var.set(output_dir)
 
-    def do_info_thread(archive):
+        try:
+            out = extract_archive(archive, password, output_dir)
+            root.after(0, lambda: messagebox.showinfo("Success", f"Extracted to: {out}"))
+        except Exception as e:
+            root.after(0, lambda: messagebox.showerror("Extraction Error", str(e)))
+
+    def do_extract():
+        threading.Thread(target=do_extract_thread, daemon=True).start()
+
+    def do_info_thread():
+        archive = extract_path_var.get().strip()
+        if not archive:
+            messagebox.showerror("Error", "Please select an archive.")
+            return
+        if not os.path.exists(archive):
+            messagebox.showerror("Error", f"Archive not found: {archive}")
+            return
+
         try:
             if archive.lower().endswith(('.xz', '.lzma', '.zst', '.zstd', '.tar.xz', '.txz', '.tar.zst', '.tzst')):
                 size = os.path.getsize(archive)
@@ -508,12 +565,12 @@ def launch_gui():
             root.after(0, lambda: messagebox.showerror("Info Error", str(e)))
 
     def do_info():
-        archive = filedialog.askopenfilename(title="Select archive", filetypes=[("All archives", "*.zip *.pptx *.docx *.xlsx *.xz *.lzma *.tar.xz *.txz *.zst *.zstd *.tar.zst *.tzst")])
-        if not archive: return
-        threading.Thread(target=do_info_thread, args=(archive,), daemon=True).start()
+        threading.Thread(target=do_info_thread, daemon=True).start()
 
-    ttk.Button(tab_extra, text="Extract Archive", command=do_extract).pack(pady=10)
-    ttk.Button(tab_extra, text="Show Info", command=do_info).pack(pady=10)
+    ttk.Button(btn_frame, text="Extract Archive", command=do_extract).pack(side=tk.LEFT, padx=5)
+    ttk.Button(btn_frame, text="Show Info", command=do_info).pack(side=tk.LEFT, padx=5)
+
+    er += 1
 
     # ---- Apply custom colors ----
     apply_custom_colors(root, get_colors(dark_mode))
