@@ -10,7 +10,7 @@ import logging
 from typing import Dict, Any
 
 from forge.core.base import CompressionOptions, get_total_size, MAX_SIZE_MB
-from forge.core.algorithms import deflate, lzma, zstd, lz4
+from forge.core.algorithms import deflate, lzma, zstd, lz4, brotli
 from forge.exceptions import ConfigurationError
 
 logger = logging.getLogger(__name__)
