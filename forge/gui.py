@@ -286,7 +286,7 @@ def launch_gui() -> None:
 
     # Disable compression checkbox for algorithms that don't support "store"
     def on_algo_change(event=None) -> None:
-        if algo_var.get() in ("lzma", "zstd", "lz4"):
+        if algo_var.get() in ("lzma", "zstd", "lz4", "brotli"):
             compress_check.config(state="disabled")
             compress_var.set(True)
         else:
@@ -480,7 +480,7 @@ def launch_gui() -> None:
     batch_algo_combo = ttk.Combobox(
         tab_batch,
         textvariable=batch_algo_var,
-        values=["deflate", "lzma", "zstd", "lz4"],
+        values=["deflate", "lzma", "zstd", "lz4", "brotli"],
         state="readonly"
     )
     batch_algo_combo.set("deflate")
@@ -506,7 +506,7 @@ def launch_gui() -> None:
     br += 1
 
     def on_batch_algo_change(event=None) -> None:
-        if batch_algo_var.get() in ("lzma", "zstd", "lz4"):
+        if batch_algo_var.get() in ("lzma", "zstd", "lz4", "brotli"):
             batch_compress_check.config(state="disabled")
             batch_compress_var.set(True)
         else:
@@ -641,12 +641,13 @@ def launch_gui() -> None:
         archive = filedialog.askopenfilename(
             title="Select archive",
             filetypes=[
-                ("All archives", "*.zip *.xz *.lzma *.tar.xz *.txz *.zst *.zstd *.tar.zst *.tzst *.lz4 *.tar.lz4 *.pptx *.docx *.xlsx"),
+                ("All archives", "*.zip *.xz *.lzma *.tar.xz *.txz *.zst *.zstd *.tar.zst *.tzst *.lz4 *.tar.lz4 *.br *.tar.br *.pptx *.docx *.xlsx"),
                 ("ZIP files", "*.zip"),
                 ("XZ files", "*.xz *.lzma"),
                 ("TAR.XZ files", "*.tar.xz *.txz"),
                 ("Zstandard", "*.zst *.zstd *.tar.zst *.tzst"),
                 ("LZ4 files", "*.lz4 *.tar.lz4"),
+                ("Brotli files", "*.br *.tar.br"),
                 ("PPTX files", "*.pptx"),
                 ("DOCX files", "*.docx"),
                 ("XLSX files", "*.xlsx")
@@ -710,48 +711,28 @@ def launch_gui() -> None:
             out = extract_archive(archive, password, output_dir)
             root.after(0, lambda: messagebox.showinfo("Success", f"Extracted to: {out}"))
         except Exception as e:
-            root.after(0, lambda: messagebox.showerror("Extraction Error", str(e)))
+            # Bind e as default argument to avoid late-binding issue
+            root.after(0, lambda e=e: messagebox.showerror("Extraction Error", str(e)))
 
     def do_extract() -> None:
         threading.Thread(target=do_extract_thread, daemon=True).start()
 
     def do_info_thread() -> None:
-    archive = extract_path_var.get().strip()
-    if not archive:
-        root.after(0, lambda: messagebox.showerror("Error", "Please select an archive."))
-        return
-    if not os.path.exists(archive):
-        root.after(0, lambda: messagebox.showerror("Error", f"Archive not found: {archive}"))
-        return
-
-    try:
-        # Check for non‑ZIP archives (LZMA, Zstd, LZ4, Brotli, TAR)
-        if archive.lower().endswith(('.xz', '.lzma', '.zst', '.zstd', '.tar.xz', '.txz', '.tar.zst', '.tzst', '.lz4', '.tar.lz4', '.br', '.tar.br')):
-            size = os.path.getsize(archive)
-            msg = f"Archive: {os.path.basename(archive)}\nType: LZMA, Zstd, LZ4, or Brotli\nCompressed size: {format_size(size)}"
-            root.after(0, lambda: messagebox.showinfo("Archive Info", msg))
+        archive = extract_path_var.get().strip()
+        if not archive:
+            root.after(0, lambda: messagebox.showerror("Error", "Please select an archive."))
+            return
+        if not os.path.exists(archive):
+            root.after(0, lambda: messagebox.showerror("Error", f"Archive not found: {archive}"))
             return
 
-        # ZIP / Office
-        with zipfile.ZipFile(archive, 'r') as z:
-            info = z.infolist()
-            if not info:
-                root.after(0, lambda: messagebox.showinfo("Archive Info", "Archive is empty."))
+        try:
+            # Check for non‑ZIP archives (LZMA, Zstd, LZ4, Brotli, TAR)
+            if archive.lower().endswith(('.xz', '.lzma', '.zst', '.zstd', '.tar.xz', '.txz', '.tar.zst', '.tzst', '.lz4', '.tar.lz4', '.br', '.tar.br')):
+                size = os.path.getsize(archive)
+                msg = f"Archive: {os.path.basename(archive)}\nType: LZMA, Zstd, LZ4, or Brotli\nCompressed size: {format_size(size)}"
+                root.after(0, lambda: messagebox.showinfo("Archive Info", msg))
                 return
-            total_compressed = sum(f.compress_size for f in info)
-            total_extracted = sum(f.file_size for f in info)
-            ratio = total_extracted / total_compressed if total_compressed else 0
-            msg = (
-                f"Archive: {os.path.basename(archive)}\n"
-                f"Files: {len(info)}\n"
-                f"Compressed: {format_size(total_compressed)}\n"
-                f"Extracted:  {format_size(total_extracted)}\n"
-                f"Ratio: {ratio:.2f}x"
-            )
-            root.after(0, lambda: messagebox.showinfo("Archive Info", msg))
-    except Exception as exc:
-        err_msg = str(exc)
-        root.after(0, lambda msg=err_msg: messagebox.showerror("Info Error", msg))
 
             # ZIP / Office
             with zipfile.ZipFile(archive, 'r') as z:
@@ -771,7 +752,8 @@ def launch_gui() -> None:
                 )
                 root.after(0, lambda: messagebox.showinfo("Archive Info", msg))
         except Exception as e:
-            root.after(0, lambda: messagebox.showerror("Info Error", str(e)))
+            # Bind e as default argument to avoid late-binding issue
+            root.after(0, lambda e=e: messagebox.showerror("Info Error", str(e)))
 
     def do_info() -> None:
         threading.Thread(target=do_info_thread, daemon=True).start()
