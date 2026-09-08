@@ -716,21 +716,42 @@ def launch_gui() -> None:
         threading.Thread(target=do_extract_thread, daemon=True).start()
 
     def do_info_thread() -> None:
-        archive = extract_path_var.get().strip()
-        if not archive:
-            root.after(0, lambda: messagebox.showerror("Error", "Please select an archive."))
-            return
-        if not os.path.exists(archive):
-            root.after(0, lambda: messagebox.showerror("Error", f"Archive not found: {archive}"))
+    archive = extract_path_var.get().strip()
+    if not archive:
+        root.after(0, lambda: messagebox.showerror("Error", "Please select an archive."))
+        return
+    if not os.path.exists(archive):
+        root.after(0, lambda: messagebox.showerror("Error", f"Archive not found: {archive}"))
+        return
+
+    try:
+        # Check for non‑ZIP archives (LZMA, Zstd, LZ4, Brotli, TAR)
+        if archive.lower().endswith(('.xz', '.lzma', '.zst', '.zstd', '.tar.xz', '.txz', '.tar.zst', '.tzst', '.lz4', '.tar.lz4', '.br', '.tar.br')):
+            size = os.path.getsize(archive)
+            msg = f"Archive: {os.path.basename(archive)}\nType: LZMA, Zstd, LZ4, or Brotli\nCompressed size: {format_size(size)}"
+            root.after(0, lambda: messagebox.showinfo("Archive Info", msg))
             return
 
-        try:
-            # Check for non‑ZIP archives (LZMA, Zstd, LZ4, TAR)
-            if archive.lower().endswith(('.xz', '.lzma', '.zst', '.zstd', '.tar.xz', '.txz', '.tar.zst', '.tzst', '.lz4', '.tar.lz4')):
-                size = os.path.getsize(archive)
-                msg = f"Archive: {os.path.basename(archive)}\nType: LZMA, Zstd, or LZ4\nCompressed size: {format_size(size)}"
-                root.after(0, lambda: messagebox.showinfo("Archive Info", msg))
+        # ZIP / Office
+        with zipfile.ZipFile(archive, 'r') as z:
+            info = z.infolist()
+            if not info:
+                root.after(0, lambda: messagebox.showinfo("Archive Info", "Archive is empty."))
                 return
+            total_compressed = sum(f.compress_size for f in info)
+            total_extracted = sum(f.file_size for f in info)
+            ratio = total_extracted / total_compressed if total_compressed else 0
+            msg = (
+                f"Archive: {os.path.basename(archive)}\n"
+                f"Files: {len(info)}\n"
+                f"Compressed: {format_size(total_compressed)}\n"
+                f"Extracted:  {format_size(total_extracted)}\n"
+                f"Ratio: {ratio:.2f}x"
+            )
+            root.after(0, lambda: messagebox.showinfo("Archive Info", msg))
+    except Exception as exc:
+        err_msg = str(exc)
+        root.after(0, lambda msg=err_msg: messagebox.showerror("Info Error", msg))
 
             # ZIP / Office
             with zipfile.ZipFile(archive, 'r') as z:
