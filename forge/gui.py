@@ -252,7 +252,7 @@ def launch_gui() -> None:
     algo_combo = ttk.Combobox(
         tab_single,
         textvariable=algo_var,
-        values=["deflate", "lzma", "zstd", "lz4"],
+        values=["deflate", "lzma", "zstd", "lz4", "brotli"],
         state="readonly"
     )
     algo_combo.set("deflate")
