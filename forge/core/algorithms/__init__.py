@@ -1,2 +1,2 @@
 # forge/core/algorithms/__init__.py
-from . import deflate, lzma, zstd
+from . import deflate, lzma, zstd, lz4
