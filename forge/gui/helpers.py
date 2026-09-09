@@ -1,6 +1,4 @@
 # forge/gui/helpers.py
-import os
-
 def handle_drop(event, var):
     """Handle drag‑and‑drop for tkinterdnd2."""
     raw = event.data
