@@ -9,7 +9,7 @@ from forge.utils import format_size, format_time
 from forge.smart_suggest import suggest_algorithm
 from forge.gui.helpers import handle_drop
 
-def build_tab_single(parent, root, dark_mode, has_dnd):
+def build_tab_single(parent, root, dark_mode, has_dnd, dnd_files):
     """Build the Single Generate tab."""
     tab = ttk.Frame(parent)
     parent.add(tab, text="Single Generate")
@@ -35,8 +35,8 @@ def build_tab_single(parent, root, dark_mode, has_dnd):
     input_entry = ttk.Entry(tab, textvariable=input_path_var, width=40)
     input_entry.grid(row=row, column=1, padx=5, pady=5, sticky="ew")
 
-    if has_dnd:
-        input_entry.drop_target_register("DND_FILES")
+    if has_dnd and dnd_files:
+        input_entry.drop_target_register(dnd_files)
         input_entry.dnd_bind('<<Drop>>', lambda e: handle_drop(e, input_path_var))
 
     def browse_input():
@@ -194,14 +194,12 @@ def build_tab_single(parent, root, dark_mode, has_dnd):
     progress_single.grid(row=row, column=0, columnspan=3, padx=5, pady=5)
     row += 1
 
-    # ---- Log helper ----
     def log_single_msg(msg: str):
         log_single.config(state="normal")
         log_single.insert("end", msg + "\n")
         log_single.see("end")
         log_single.config(state="disabled")
 
-    # ---- Generation thread ----
     def generate_single_thread():
         gen_btn.config(state="disabled")
         progress_single["value"] = 0
@@ -248,7 +246,6 @@ def build_tab_single(parent, root, dark_mode, has_dnd):
             gen_btn.config(state="normal")
             progress_single["value"] = 0
 
-    # ---- Generate button ----
     gen_btn = ttk.Button(
         tab,
         text="Generate",
@@ -256,8 +253,7 @@ def build_tab_single(parent, root, dark_mode, has_dnd):
     )
     gen_btn.grid(row=row, column=0, columnspan=3, pady=10)
 
-    # ---- Configure grid weights ----
     tab.grid_columnconfigure(1, weight=1)
-    tab.grid_rowconfigure(row-2, weight=1)  # log area expands
+    tab.grid_rowconfigure(row-2, weight=1)
 
     return tab
