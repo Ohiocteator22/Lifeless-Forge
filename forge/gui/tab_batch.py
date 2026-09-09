@@ -9,8 +9,7 @@ from forge.utils import format_size, format_time, parse_size_string
 from forge.smart_suggest import suggest_algorithm
 from forge.gui.helpers import handle_drop
 
-def build_tab_batch(parent, root, dark_mode, has_dnd):
-    """Build the Batch Generate tab."""
+def build_tab_batch(parent, root, dark_mode, has_dnd, dnd_files):
     tab = ttk.Frame(parent)
     parent.add(tab, text="Batch Generate")
 
@@ -35,8 +34,8 @@ def build_tab_batch(parent, root, dark_mode, has_dnd):
     batch_input_entry = ttk.Entry(tab, textvariable=batch_input_path_var, width=40)
     batch_input_entry.grid(row=br, column=1, padx=5, pady=5, sticky="ew")
 
-    if has_dnd:
-        batch_input_entry.drop_target_register("DND_FILES")
+    if has_dnd and dnd_files:
+        batch_input_entry.drop_target_register(dnd_files)
         batch_input_entry.dnd_bind('<<Drop>>', lambda e: handle_drop(e, batch_input_path_var))
 
     def batch_browse_input():
@@ -103,7 +102,7 @@ def build_tab_batch(parent, root, dark_mode, has_dnd):
     batch_algo_combo.grid(row=br, column=1, padx=5, pady=5, sticky="w")
     br += 1
 
-    # ---- Smart Suggest button (own row) ----
+    # ---- Smart Suggest button ----
     def smart_suggest_batch():
         path = batch_input_path_var.get().strip()
         if not path:
@@ -183,14 +182,12 @@ def build_tab_batch(parent, root, dark_mode, has_dnd):
     batch_progress_bar.grid(row=br, column=0, columnspan=2, padx=5, pady=5)
     br += 1
 
-    # ---- Log helper ----
     def log_batch_msg(msg: str):
         batch_log.config(state="normal")
         batch_log.insert("end", msg + "\n")
         batch_log.see("end")
         batch_log.config(state="disabled")
 
-    # ---- Batch thread ----
     def generate_batch_thread():
         batch_btn.config(state="disabled")
         batch_progress_bar["value"] = 0
@@ -247,7 +244,6 @@ def build_tab_batch(parent, root, dark_mode, has_dnd):
             batch_btn.config(state="normal")
             batch_progress_bar["value"] = 0
 
-    # ---- Generate button ----
     batch_btn = ttk.Button(
         tab,
         text="Generate Batch",
@@ -255,7 +251,6 @@ def build_tab_batch(parent, root, dark_mode, has_dnd):
     )
     batch_btn.grid(row=br, column=0, columnspan=2, pady=10)
 
-    # ---- Grid weights ----
     tab.grid_columnconfigure(1, weight=1)
     tab.grid_rowconfigure(br-2, weight=1)
 
