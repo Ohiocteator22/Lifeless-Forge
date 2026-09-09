@@ -13,11 +13,11 @@ Perfect for:
 
 ## ✨ Features
 
-- **Three compression algorithms** – DEFLATE (ZIP), LZMA (XZ), Zstandard (Zstd)
-- **Multiple output formats** – ZIP, PPTX, DOCX, XLSX, TAR, TAR.XZ, TAR.ZST
+- **Five compression algorithms** – DEFLATE (ZIP), LZMA (XZ), Zstandard (Zstd), Brotli (br), LZ4
+- **Multiple output formats** – ZIP, PPTX, DOCX, XLSX, TAR, TAR.XZ, TAR.ZST, .br
 - **Password protection** – AES‑256 (secure) or legacy ZipCrypto (Windows native)
 - **Batch generation** – from comma‑separated sizes or JSON configuration
-- **Universal extraction** – supports ZIP, XZ, Zstd, TAR, TAR.XZ, TAR.ZST, and Office formats
+- **Universal extraction** – supports ZIP, XZ, Zstd, TAR, TAR.XZ, TAR.ZST, .br and Office formats
 - **Real‑file/folder compression** – compress existing files while preserving folder structure
 - **Pattern‑based test generation** – create large repetitive files with a single character
 - **CLI & GUI** – full command‑line support plus a user‑friendly Tkinter interface
