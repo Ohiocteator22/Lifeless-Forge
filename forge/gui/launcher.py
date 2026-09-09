@@ -17,16 +17,16 @@ except ImportError:
     HAS_SV_TTK = False
 
 try:
-    from tkinterdnd2 import TkinterDnD
+    from tkinterdnd2 import DND_FILES, TkinterDnD
     HAS_DND = True
 except ImportError:
     HAS_DND = False
+    DND_FILES = None
     TkinterDnD = None
 
 
 def launch_gui():
     """Launch the Tkinter GUI."""
-    # Load config and theme
     config = load_config()
     dark_mode_pref = config.get("dark_mode", None)
     if dark_mode_pref is None:
@@ -36,7 +36,6 @@ def launch_gui():
     else:
         dark_mode = dark_mode_pref
 
-    # Create root window
     if HAS_DND:
         root = TkinterDnD.Tk()
     else:
@@ -46,14 +45,12 @@ def launch_gui():
     root.geometry("760x720")
     root.resizable(False, False)
 
-    # ---- Set icon ----
+    # Set icon
     try:
         icon_path = resource_path("app_icon.ico")
         root.iconbitmap(icon_path)
-        # For taskbar on Windows, set the default icon as well
         root.iconbitmap(default=icon_path)
-    except Exception as e:
-        # Silently ignore if icon not found
+    except Exception:
         pass
 
     # Menu bar
@@ -78,12 +75,10 @@ def launch_gui():
         style = ttk.Style()
         style.theme_use('clam')
 
-    # Apply custom colours
     colors = get_colors(dark_mode)
     root.configure(bg=colors["bg"])
     apply_custom_colors(root, colors)
 
-    # Theme toggle
     def toggle_dark_mode():
         nonlocal dark_mode
         dark_mode = not dark_mode
@@ -109,19 +104,16 @@ def launch_gui():
     nb = ttk.Notebook(root)
     nb.pack(fill="both", expand=True, padx=5, pady=5)
 
-    # Build tabs
-    build_tab_single(nb, root, dark_mode, HAS_DND)
-    build_tab_batch(nb, root, dark_mode, HAS_DND)
-    build_tab_extract(nb, root, dark_mode, HAS_DND)
+    # Build tabs – pass DND_FILES constant
+    build_tab_single(nb, root, dark_mode, HAS_DND, DND_FILES)
+    build_tab_batch(nb, root, dark_mode, HAS_DND, DND_FILES)
+    build_tab_extract(nb, root, dark_mode, HAS_DND, DND_FILES)
 
-    # Apply custom colours again (for any widgets created after)
     apply_custom_colors(root, get_colors(dark_mode))
-
     root.mainloop()
 
 
 def resource_path(relative_path: str) -> str:
-    """Get absolute path to resource, works for dev and PyInstaller."""
     try:
         base_path = sys._MEIPASS
     except AttributeError:
