@@ -1,5 +1,6 @@
 # forge/gui/launcher.py
 import sys
+import os
 import tkinter as tk
 from tkinter import ttk
 
@@ -44,9 +45,15 @@ def launch_gui():
     root.title("Lifeless-Forge – Compression Tool")
     root.geometry("760x720")
     root.resizable(False, False)
+
+    # ---- Set icon ----
     try:
-        root.iconbitmap(resource_path("app_icon.ico"))
-    except:
+        icon_path = resource_path("app_icon.ico")
+        root.iconbitmap(icon_path)
+        # For taskbar on Windows, set the default icon as well
+        root.iconbitmap(default=icon_path)
+    except Exception as e:
+        # Silently ignore if icon not found
         pass
 
     # Menu bar
