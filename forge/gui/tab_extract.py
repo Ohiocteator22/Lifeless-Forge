@@ -9,12 +9,10 @@ from forge.core import extract_archive
 from forge.utils import format_size
 from forge.gui.helpers import handle_drop
 
-def build_tab_extract(parent, root, dark_mode, has_dnd):
-    """Build the Extract / Info tab."""
+def build_tab_extract(parent, root, dark_mode, has_dnd, dnd_files):
     tab = ttk.Frame(parent)
     parent.add(tab, text="Extract / Info")
 
-    # Variables
     extract_path_var = tk.StringVar()
     extract_password_var = tk.StringVar()
     extract_output_var = tk.StringVar()
@@ -28,8 +26,8 @@ def build_tab_extract(parent, root, dark_mode, has_dnd):
     extract_entry = ttk.Entry(tab, textvariable=extract_path_var, width=50)
     extract_entry.grid(row=er, column=1, padx=5, pady=5, sticky="ew")
 
-    if has_dnd:
-        extract_entry.drop_target_register("DND_FILES")
+    if has_dnd and dnd_files:
+        extract_entry.drop_target_register(dnd_files)
         extract_entry.dnd_bind('<<Drop>>', lambda e: handle_drop(e, extract_path_var))
 
     def browse_extract_file():
@@ -121,14 +119,12 @@ def build_tab_extract(parent, root, dark_mode, has_dnd):
             return
 
         try:
-            # Non‑ZIP archives (LZMA, Zstd, LZ4, Brotli, TAR)
             if archive.lower().endswith(('.xz', '.lzma', '.zst', '.zstd', '.tar.xz', '.txz', '.tar.zst', '.tzst', '.lz4', '.tar.lz4', '.br', '.tar.br')):
                 size = os.path.getsize(archive)
                 msg = f"Archive: {os.path.basename(archive)}\nType: LZMA, Zstd, LZ4, or Brotli\nCompressed size: {format_size(size)}"
                 root.after(0, lambda: messagebox.showinfo("Archive Info", msg))
                 return
 
-            # ZIP / Office
             with zipfile.ZipFile(archive, 'r') as z:
                 info = z.infolist()
                 if not info:
@@ -154,7 +150,5 @@ def build_tab_extract(parent, root, dark_mode, has_dnd):
     ttk.Button(btn_frame, text="Extract Archive", command=do_extract).pack(side=tk.LEFT, padx=5)
     ttk.Button(btn_frame, text="Show Info", command=do_info).pack(side=tk.LEFT, padx=5)
 
-    # ---- Grid weights ----
     tab.grid_columnconfigure(1, weight=1)
-
     return tab
