@@ -1,7 +1,7 @@
 # ⚙️ Lifeless-Forge
 
 **Lifeless-Forge** is a **cross‑platform compression/decompression toolkit** with both a **CLI** and a **modern Tkinter GUI**.  
-It supports **DEFLATE (ZIP)**, **LZMA (XZ)**, and **Zstandard** algorithms, can generate test data with custom patterns, compress real files/folders, handle **password protection** (AES‑256 or legacy ZipCrypto), and offers **batch processing** and **Windows Explorer integration**.
+It supports **DEFLATE (ZIP)**, **LZMA (XZ)**, **BROTLI (BR)**, ZL4, and **Zstandard** algorithms, can generate test data with custom patterns, compress real files/folders, handle **password protection** (AES‑256 or legacy ZipCrypto), and offers **batch processing** and **Windows Explorer integration**.
 
 Perfect for:
 - Testing storage limits & mail server attachment caps
